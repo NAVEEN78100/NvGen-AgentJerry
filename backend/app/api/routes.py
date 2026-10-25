@@ -514,7 +514,11 @@ class SearchIn(BaseModel):
 @router.post("/knowledge/search")
 def knowledge_search(body: SearchIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     retr = BM25Retriever(db, user.org_id)
-    return [p.as_dict() for p in retr.search(body.query, k=5, min_score=0.3)]
+    hits = retr.search(body.query, k=5, min_score=0.3)
+    if hits:
+        top = hits[0].score
+        hits = [h for h in hits if h.score >= top * 0.3]
+    return [p.as_dict() for p in hits]
 
 
 # ------------------------------------------------------------------ outbox, activity, notifications

@@ -50,7 +50,7 @@ PURPOSE_DEFAULT_ENTITY = {
 }
 
 ACTION_PATTERNS = [
-    (r"\b(generate|draft|write|create|prepare|compose)\b[^.,;]*?\b(e-?mails?|messages?|follow[\s-]?ups?|reminders?|invitations?|invites?)\b", "draft"),
+    (r"\b(generate|draft|write|create|prepare|compose)\b[^.,;]*\b(e-?mails?|messages?|follow[\s-]?ups?|reminders?|invitations?|invites?)\b", "draft"),
     (r"\bpersonali[sz]ed\b", "personalize"),
     (r"\b(send|email|mail|notify)\b", "send"),
     (r"\b(identify|find|pick|filter|select|spot|detect|check for|look for)\b", "identify"),

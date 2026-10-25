@@ -9,7 +9,12 @@ from ..runtime.scheduler import next_run
 
 
 def iso(dt) -> str | None:
-    return dt.isoformat() if dt else None
+    if not dt:
+        return None
+    if dt.tzinfo is None:  # SQLite drops tzinfo; everything is stored in UTC
+        from datetime import timezone
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 
 def user_out(u: User) -> dict[str, Any]:
