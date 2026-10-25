@@ -71,6 +71,7 @@ def plan(req: dict[str, Any]) -> list[dict[str, Any]]:
             f"Your instruction asks for {req['message']['noun']}.",
             {"purpose": req["purpose"], "tone": req["message"]["tone"], "sender": req["message"]["sender"],
              "company": req["message"]["company"], "roles": roles, "instructions": req["message"].get("instructions", ""),
+             "mentions": req["message"].get("mentions", []),
              "entity": ent})
 
     add("safety.check", "Check every draft", "Flag invalid addresses, missing names, placeholders and risky wording.",

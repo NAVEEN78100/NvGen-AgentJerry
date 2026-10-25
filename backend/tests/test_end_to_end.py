@@ -227,3 +227,23 @@ def test_safety_check_flags_invalid_address(client, auth):
 def test_auth_required(client):
     assert client.get("/api/agents").status_code == 401
     assert client.post("/api/auth/login", json={"email": "priya@brightpath.example", "password": "nope"}).status_code == 401
+
+
+def test_refine_mention_is_grounded_and_report_reads_pipeline(client, auth):
+    a = client.post("/api/studio", headers=auth, json={"prompt": PROMPT}).json()
+    a = client.post(f"/api/studio/{a['id']}/refine", headers=auth,
+                    json={"text": "make it formal and mention our free 21-day pilot"}).json()
+    assert a["requirement"]["message"]["tone"] == "formal"
+    run = _run(client, auth, a["id"], "test")
+    d = next(l for l in run["logs"] if l["tool"] == "ai.draft")["output"]["samples"][0]
+    assert "free 21-day pilot with your own data" in d["body"]  # fact came from the knowledge base
+    assert d["body"].startswith("Dear ")
+
+    r = client.post("/api/studio", headers=auth, json={
+        "prompt": "Every Friday at 5pm, summarize the sales pipeline and email it to manager@brightpath.example"}).json()
+    assert r["requirement"]["source"]["file_name"] == "sales_pipeline_q3.xlsx"
+    assert r["status"] == "ready", r["questions"]
+    run = _run(client, auth, r["id"], "test")
+    rep = next(l for l in run["logs"] if l["tool"] == "ai.draft_report")["output"]["samples"][0]
+    assert "Negotiation" in rep["body"] and "₹" in rep["body"]
+    assert rep["to"] == "manager@brightpath.example"

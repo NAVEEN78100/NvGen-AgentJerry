@@ -82,16 +82,24 @@ def _q(qid: str, field_: str, kind: str, prompt: str, why: str, options=None, de
             "options": options or [], "default": default, "blocking": blocking, "placeholder": placeholder}
 
 
-def _match_files(hint: str | None, entity: dict | None, files: list[dict]) -> list[tuple[dict, int]]:
+_IGNORE = {"my", "our", "the", "spreadsheet", "sheet", "sheets", "excel", "csv", "xlsx", "tracker", "list", "of",
+           "workbook", "every", "and", "email", "emails", "send", "read", "check", "data", "file", "report", "it",
+           "to", "me", "for", "with", "from", "in", "on", "at", "a", "an", "them", "weekly", "daily", "monthly"}
+
+
+def _match_files(hint: str | None, entity: dict | None, files: list[dict], text: str = "") -> list[tuple[dict, int]]:
     words = set(re.findall(r"[a-z]+", (hint or "").lower()))
+    # words elsewhere in the instruction also count, at lower weight
+    extra = {w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 3} - _IGNORE
     words -= {"my", "our", "the", "spreadsheet", "sheet", "sheets", "excel", "csv", "xlsx", "tracker", "list", "of", "workbook"}
-    if entity:
+    if entity and re.search(rf"\b{re.escape(entity['singular'])}", text.lower()):
         words |= {entity["singular"], entity["plural"]}
     scored = []
     for f in files:
         name_words = set(re.findall(r"[a-z]+", f["name"].lower()))
         name_words |= {w.rstrip("s") for w in name_words}
-        score = len(words & name_words) + len({w.rstrip("s") for w in words} & name_words)
+        score = 2 * (len(words & name_words) + len({w.rstrip("s") for w in words} & name_words))
+        score += len((extra | {w.rstrip("s") for w in extra}) & name_words)
         scored.append((f, score))
     scored.sort(key=lambda x: -x[1])
     return scored
@@ -196,11 +204,14 @@ def build_requirement(parsed: dict[str, Any], answers: dict[str, Any], ctx: Cont
             chosen = exact[0]
             assumptions.append(f"Reads “{chosen['name']}”, the file you named")
     if not chosen and ctx.files:
-        candidates = _match_files(source.get("hint"), req["entity"], ctx.files)
+        candidates = _match_files(source.get("hint"), req["entity"], ctx.files, parsed.get("text", ""))
         top = [c for c in candidates if c[1] > 0]
         if top and (len(top) == 1 or top[0][1] > top[1][1]):
             chosen = top[0][0]
-            assumptions.append(f"Reads “{chosen['name']}” — it matched “{source.get('hint') or req['entity']['plural']}”")
+            assumptions.append(f"Reads “{chosen['name']}”, the closest match to your description")
+    if chosen and req["pattern"] == "report" and not re.search(rf"\b{re.escape(req['entity']['singular'])}", parsed.get("text", "").lower()):
+        if re.search(r"pipeline|deal|opportunit", chosen["name"].lower()):
+            req["entity"] = {"singular": "deal", "plural": "deals"}
     req["source"] = {"kind": "spreadsheet", "hint": source.get("hint"),
                      "file_id": chosen["id"] if chosen else None,
                      "file_name": chosen["name"] if chosen else None}
@@ -247,6 +258,7 @@ def build_requirement(parsed: dict[str, Any], answers: dict[str, Any], ctx: Cont
         assumptions.append(f"Signs emails as {sender}, {ctx.org_name}")
     req["message"] = {"purpose": purpose, "noun": PURPOSE_NOUN.get(purpose or "custom", "emails"),
                       "tone": tone, "sender": sender, "company": ctx.org_name,
+                      "mentions": parsed.get("mentions") or [],
                       "instructions": answers.get("instructions") or (prev.get("message") or {}).get("instructions") or ""}
 
     # ---- recipients ----

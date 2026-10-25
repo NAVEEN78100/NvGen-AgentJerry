@@ -87,6 +87,8 @@ def _merge_refinement(base: dict[str, Any], delta: dict[str, Any], answers: dict
     if delta.get("approval_explicit") is not None:
         merged["approval_explicit"] = delta["approval_explicit"]
         answers.pop("approval", None)
+    if delta.get("mentions"):
+        merged["mentions"] = list(dict.fromkeys((merged.get("mentions") or []) + delta["mentions"]))
     if (delta.get("source") or {}).get("hint"):
         merged["source"] = delta["source"]
         answers.pop("source_file", None)
@@ -175,7 +177,7 @@ def refine(db: Session, agent: Agent, user: User, text: str) -> Agent:
     delta, _ = _parse(text, user.name)
     answers = dict(state.get("answers", {}))
     state["parsed"] = _merge_refinement(state.get("parsed", {}), delta, answers)
-    if not delta.get("understood") and not any(delta.get(k) for k in ("tone", "sender", "approval_explicit", "fixed_email")) \
+    if not delta.get("understood") and not any(delta.get(k) for k in ("tone", "sender", "approval_explicit", "fixed_email", "mentions")) \
             and not (delta.get("trigger") or {}).get("type"):
         # free-form writing guidance, e.g. "mention our Diwali offer"
         answers["instructions"] = (answers.get("instructions", "") + " " + text).strip()

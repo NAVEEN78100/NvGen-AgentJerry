@@ -437,7 +437,18 @@ def h_draft(c: StepCtx) -> dict:
     rows = rows[:cap]
     passages = (c.data.get("passages") or [[] for _ in rows])[:len(rows)]
     roles = c.params.get("roles", {})
-    drafts_raw, engine = writer.draft_all(rows, roles, c.params, passages)
+    spec = dict(c.params)
+    lines = []
+    if c.params.get("mentions"):
+        from .knowledge import best_sentence
+        with session_scope() as db:
+            retr = BM25Retriever(db, c.agent.org_id)
+            for topic in c.params["mentions"]:
+                hits = retr.search(topic, k=1, min_score=1.0)
+                lines.append({"topic": topic, "line": best_sentence(hits[0].text, topic) if hits else None,
+                              "source": hits[0].source_title if hits else None})
+    spec["mention_lines"] = lines
+    drafts_raw, engine = writer.draft_all(rows, roles, spec, passages)
     email_col = roles.get("email")
     key_col = (c.req.get("memory") or {}).get("key_column") or email_col
     drafts = []

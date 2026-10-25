@@ -73,8 +73,10 @@ function Bubble({ m, active, setActive, last, animate }: { m: ConvMessage; activ
                 onMouseEnter={() => setActive(f.field)} onMouseLeave={() => setActive(null)}
                 className={clsx('flex items-start gap-3 px-3.5 py-2.5 transition-colors', active === f.field && 'bg-paper')}>
                 <span className="mt-1.5"><FieldSwatch field={f.field} /></span>
-                <span className="w-[128px] shrink-0 text-[12.5px] font-semibold text-ink-2">{f.label}</span>
+                <span className="flex flex-col sm:flex-row sm:gap-3 min-w-0 flex-1">
+                <span className="sm:w-[128px] shrink-0 text-[12.5px] font-semibold text-ink-2">{f.label}</span>
                 <span className={clsx('text-[13.5px] min-w-0', f.value ? 'text-ink' : 'text-ink-3 italic')}>{f.value || 'Not set yet'}</span>
+                </span>
               </motion.div>
             ))}
           </div>
@@ -301,6 +303,7 @@ export function Studio() {
 
   const promptMsg = agent?.conversation.find(m => m.kind === 'prompt')
   const lastQIndex = useMemo(() => agent ? agent.conversation.map(m => m.kind).lastIndexOf('questions') : -1, [agent])
+  const lastUIndex = useMemo(() => agent ? agent.conversation.map(m => m.kind).lastIndexOf('understanding') : -1, [agent])
 
   // ---------------------------------------------------------------- idle
   if (phase !== 'ready' || !agent) {
@@ -382,7 +385,7 @@ export function Studio() {
           </div>
         )}
         <div className="mt-5 space-y-4">
-          {agent.conversation.map((m, i) => (
+          {agent.conversation.map((m, i) => (m.kind === 'understanding' && i !== lastUIndex) || (m.kind === 'questions' && i !== lastQIndex) ? null : (
             <motion.div key={i} initial={i >= freshIds ? { opacity: 0, y: 8 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: i >= freshIds ? 0.15 * (i - freshIds) : 0 }}>
               <Bubble m={m} active={active} setActive={setActive} last={i === lastQIndex} animate={i >= freshIds} />
             </motion.div>

@@ -151,6 +151,10 @@ def offline_draft(row: dict, roles: dict, spec: dict, passages: list[dict]) -> d
         if grounding:
             paras.append(grounding)
 
+    for ml in spec.get("mention_lines") or []:
+        extra = ml.get("line") or f"I also wanted to mention {_you(ml['topic'])}."
+        if extra and extra not in paras:
+            paras.insert(max(1, len(paras) - 1), ("Also worth knowing: " + extra) if ml.get("line") else extra)
     body = f"{greet} {first},\n\n" + "\n\n".join(paras) + f"\n\n{sig}"
     return {"subject": subject, "body": body, "engine": "offline", "used_passage": used}
 

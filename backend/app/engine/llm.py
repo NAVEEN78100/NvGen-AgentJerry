@@ -104,6 +104,7 @@ Return ONLY JSON: [{"index": int, "subject": str, "body": str, "used_passage": i
 def draft_batch(spec: dict[str, Any], items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     payload = {"purpose": spec.get("purpose"), "tone": spec.get("tone"), "sender": spec.get("sender"),
                "company": spec.get("company"), "extra_instructions": spec.get("instructions", ""),
+               "must_mention": [m.get("line") or m.get("topic") for m in spec.get("mention_lines") or []],
                "recipients": items}
     out = call_json(DRAFT_SYSTEM, json.dumps(payload, ensure_ascii=False), max_tokens=min(8000, 400 * len(items) + 500))
     if not isinstance(out, list):

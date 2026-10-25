@@ -1,0 +1,13 @@
+services:
+  agentjerry:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      # Leave empty to use the offline engine; set to use Claude
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AGENTJERRY_JWT_SECRET: ${AGENTJERRY_JWT_SECRET:-change-me}
+      # Optional PostgreSQL: postgresql+psycopg://user:pass@db/agentjerry
+      # AGENTJERRY_DATABASE_URL: ${AGENTJERRY_DATABASE_URL}
+    volumes: ["agentjerry-data:/data"]
+volumes:
+  agentjerry-data:

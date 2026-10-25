@@ -262,6 +262,13 @@ def understand(text: str, user_name: str = "") -> dict[str, Any]:
         sender = m.group(5)
         _span(spans, m, "output", "Signed by")
 
+    mentions = []
+    for m in re.finditer(r"\b(mention|include|highlight|talk about|tell them about|add a line about|remind them about|promote)\s+(.+?)(?=[.;!]|$|,| and (?:make|run|send|sign|use))", text, re.I):
+        topic = m.group(2).strip()
+        if 2 < len(topic) < 120:
+            mentions.append(topic)
+            _span(spans, m, "knowledge", "Also mention")
+
     spans.sort(key=lambda s: s["start"])
     return {
         "purpose": purpose,
@@ -281,4 +288,6 @@ def understand(text: str, user_name: str = "") -> dict[str, Any]:
         "actions": sorted(set(actions)),
         "spans": spans,
         "understood": purpose is not None,
+        "text": text,
+        "mentions": mentions,
     }
