@@ -59,7 +59,7 @@ ACTION_PATTERNS = [
 
 FILTER_ADJ = r"(new|fresh|hot|warm|cold|qualified|unqualified|shortlisted|selected|rejected|overdue|unpaid|pending|late|inactive|active|lost|won|open|closed|interested|unresponsive|dormant|due)"
 
-APPROVAL_YES = r"(for (my )?approval|approv(e|al)|show (them|it|those|these)?\s*to me|show me|before (sending|send|it goes|they go)|let me (review|check|see)|review (them|it)? ?first|my (ok|okay|sign[\s-]?off)|confirm with me|ask me (first|before))"
+APPROVAL_YES = r"(for (my )?approval|approv(e|al)|show (them|it|those|these)?\s*to me|show me|before (sending|send|it goes|they go)|let me (review|check|see)|review (them|it)? ?first|my (ok|okay|sign[\s-]?off)|confirm with me|check with me|run (it|them) by me|ask me (first|before))"
 APPROVAL_NO = r"(automatically send|send (them )?automatically|without (asking|approval|my approval|review)|no approval|directly send|send directly|auto[\s-]?send)"
 
 SPREADSHEET_WORDS = r"(spreadsheets?|sheets?|excel|xlsx|csv|crm export|tracker|lead list|list of [a-z ]+|google sheet|workbook)"
@@ -254,7 +254,7 @@ def understand(text: str, user_name: str = "") -> dict[str, Any]:
         fixed_email = m.group(0)
         _span(spans, m, "output", "Who receives it")
     recipient_mode = "fixed" if purpose == "report" else "per_row"
-    m = re.search(r"\b(to|for)\s+(my|our|the)\s+(manager|boss|team|head|director|founder|ceo|finance team|sales team)\b", t)
+    m = re.search(r"\b(to|for|give|send|email|tell)\s+(my|our|the)\s+(finance team|sales team|manager|boss|team|head|director|founder|ceo)\b", t)
     report_to_role = None
     if m:
         report_to_role = m.group(3)

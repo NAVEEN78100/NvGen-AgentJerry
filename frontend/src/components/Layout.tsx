@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, BarChart3, LayoutGrid, LogOut, MailOpen, Menu, Play, Plus, Users,
+  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, BarChart3, Gauge, LayoutGrid, LogOut, MailOpen, Menu, Play, Plus, Users,
   Send, Settings, X, XCircle,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -61,6 +61,7 @@ function Sidebar({ pending, replies, onNavigate }: { pending: number; replies: n
         <NavItem to="/outbox" icon={<Send className={i} />} label="Outbox" />
         <NavItem to="/team" icon={<Users className={i} />} label="Team" />
         <NavItem to="/activity" icon={<Activity className={i} />} label="Activity log" />
+        <NavItem to="/quality" icon={<Gauge className={i} />} label="Engine quality" />
         <NavItem to="/settings" icon={<Settings className={i} />} label="Settings" />
       </nav>
       <div className="mt-auto p-3">

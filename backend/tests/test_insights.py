@@ -48,3 +48,11 @@ def test_auto_pause_after_three_failures(client, auth):
     ag = client.get(f"/api/agents/{a['id']}", headers=auth).json()
     assert ag["status"] == "paused"
     assert any(e["action"] == "agent.auto_paused" for e in client.get("/api/activity", headers=auth).json())
+
+
+def test_engine_quality_regression(client, auth):
+    r = client.get("/api/quality", headers=auth).json()
+    assert r["cases"] >= 40
+    assert r["field_accuracy"] >= 0.97, [c for c in r["results"] if not c["ok"]]
+    purpose = next(f for f in r["per_field"] if f["field"] == "purpose")
+    assert purpose["accuracy"] == 1.0

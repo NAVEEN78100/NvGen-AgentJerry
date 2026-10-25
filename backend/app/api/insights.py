@@ -200,3 +200,12 @@ def agent_import(body: ImportIn, user: User = Depends(current_user), db: Session
     audit(db, user.org_id, user.name, "agent.imported", "agent", a.id, f"Imported “{a.name}” from a recipe")
     db.commit()
     return {"id": a.id, "name": a.name, "status": a.status}
+
+
+@router.get("/quality")
+def engine_quality(user: User = Depends(current_user)):
+    from ..engine.evaluate import run
+    from ..engine import llm
+    r = run()
+    r["llm"] = llm.status()
+    return r
