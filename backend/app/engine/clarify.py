@@ -44,6 +44,9 @@ DEFAULT_ENTITY = {
 }
 DEFAULT_DEPT = {"follow_up": "sales", "payment_reminder": "finance", "interview_invite": "hr", "report": "sales"}
 
+WRITEBACK_DEFAULT = {"follow_up": "Contacted", "payment_reminder": "Reminder sent", "interview_invite": "Invited",
+                     "welcome": "Welcomed", "thank_you": "Thanked", "custom": "Emailed"}
+
 # Synonyms used when resolving a filter word ("new", "overdue") against the
 # values that actually exist in the status column.
 FILTER_SYNONYMS = {
@@ -137,11 +140,14 @@ def _trigger_from_preset(preset: str) -> dict[str, Any]:
         "weekdays": {"type": "schedule", "frequency": "weekdays", "time": "09:00"},
         "daily": {"type": "schedule", "frequency": "daily", "time": "09:00"},
         "monthly": {"type": "schedule", "frequency": "monthly", "day_of_month": 1, "time": "10:00"},
+        "file_updated": {"type": "file_updated"},
     }
     return dict(presets.get(preset, {"type": "manual"}))
 
 
 def trigger_label(tr: dict | None) -> str:
+    if tr and tr.get("type") == "file_updated":
+        return f"Runs when {tr.get('file_name') or 'the spreadsheet'} is updated"
     if not tr or tr.get("type") in (None, "manual"):
         return "Runs when you click Run"
     time = tr.get("time") or "09:00"
@@ -230,6 +236,9 @@ def build_requirement(parsed: dict[str, Any], answers: dict[str, Any], ctx: Cont
         roles[k] = v
     if answers.get("recipient_column"):
         roles["email"] = answers["recipient_column"]
+    if req["trigger"] and req["trigger"].get("type") == "file_updated":
+        req["trigger"]["file_id"] = req["source"]["file_id"]
+        req["trigger"]["file_name"] = req["source"]["file_name"]
     req["columns"] = columns
     req["roles"] = roles
     req["row_count"] = len(rows)
@@ -307,6 +316,27 @@ def build_requirement(parsed: dict[str, Any], answers: dict[str, Any], ctx: Cont
     else:
         req["memory"] = {"enabled": False}
 
+    # ---- follow-up sequence (outreach only) ----
+    seq = answers.get("sequence") if "sequence" in answers else (parsed.get("sequence") or prev.get("sequence"))
+    if seq and req["pattern"] == "outreach" and seq.get("after_days"):
+        req["sequence"] = {"enabled": True, "after_days": int(seq["after_days"]), "max_touches": int(seq.get("max_touches") or 2)}
+        req["memory"]["description"] = (f"Follows up again after {seq['after_days']} days with no reply — up to "
+                                        f"{req['sequence']['max_touches']} emails per {req['entity']['singular']} — and stops the moment someone replies")
+    else:
+        req["sequence"] = {"enabled": False}
+
+    # ---- write-back to the source spreadsheet ----
+    wb = answers.get("writeback") if "writeback" in answers else (parsed.get("writeback") or prev.get("writeback"))
+    if wb and req["pattern"] == "outreach" and req["source"].get("file_id") and (wb.get("enabled", True)):
+        value = wb.get("value") or WRITEBACK_DEFAULT.get(purpose or "", "Emailed")
+        req["writeback"] = {"enabled": True, "column": roles.get("status") or "Status", "value": value,
+                            "date_column": "Last contacted"}
+    else:
+        req["writeback"] = {"enabled": False}
+
+    # ---- compliance ----
+    req["compliance"] = {"suppression": req["pattern"] == "outreach"}
+
     # ---- knowledge ----
     picked = pick_knowledge(ctx.knowledge, req["department"], purpose)
     req["knowledge"] = {"enabled": bool(picked) and req["pattern"] == "outreach",
@@ -369,6 +399,8 @@ def make_goal(req: dict) -> str:
     ent = req["entity"]["plural"]
     src = req["source"].get("file_name") or "your spreadsheet"
     when = trigger_label(req.get("trigger")).replace("Runs when you click Run", "When you run it")
+    if (req.get("trigger") or {}).get("type") == "file_updated":
+        when = f"Whenever {req['source'].get('file_name') or 'the spreadsheet'} is updated"
     if req.get("pattern") == "report":
         to = req["recipient"].get("email") or "the recipient you choose"
         return f"{when}, read {src}, summarise your {ent} and email the report to {to}."
@@ -378,7 +410,12 @@ def make_goal(req: dict) -> str:
     if filt:
         goal += f" ({filt['label']})"
     goal += f", skip anyone already handled, and draft personalised {req['message']['noun']}"
-    goal += ", then send only the ones you approve." if req["approval"]["required"] else ", then send them."
+    goal += ", then send only the ones you approve" if req["approval"]["required"] else ", then send them"
+    if (req.get("sequence") or {}).get("enabled"):
+        goal += f", following up after {req['sequence']['after_days']} days if there’s no reply"
+    if (req.get("writeback") or {}).get("enabled"):
+        goal += f", and mark them “{req['writeback']['value']}” in the sheet"
+    goal += "."
     return goal
 
 
@@ -440,6 +477,7 @@ def checklist(req: dict, ctx: Context) -> list[dict[str, Any]]:
                          {"value": "weekly_monday", "label": "Every Monday at 9:00 AM"},
                          {"value": "weekdays", "label": "Every weekday at 9:00 AM"},
                          {"value": "monthly", "label": "1st of every month at 10:00 AM"},
+                         {"value": "file_updated", "label": "Whenever the spreadsheet is updated", "hint": "Runs on each new upload"},
                      ], default="manual"))
     elif tr.get("frequency") == "weekly" and not tr.get("day_of_week"):
         qs.append(_q("trigger_day", "trigger", "choice", "Which day of the week?",

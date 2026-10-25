@@ -32,7 +32,7 @@ def test_scenario(client, auth):
     # 3-4. workflow generated (9-10 steps) and validated
     wf = a["workflow"]
     tools = [s["tool"] for s in wf["steps"]]
-    assert 9 <= len(tools) <= 10
+    assert 9 <= len(tools) <= 11  # doc: 9–10 steps, plus the do-not-contact check
     assert tools.index("ai.draft") < tools.index("approval.request") < tools.index("email.send") < tools.index("memory.record")
     assert wf["validation"]["valid"] and wf["validation"]["status"] == "pass"
 

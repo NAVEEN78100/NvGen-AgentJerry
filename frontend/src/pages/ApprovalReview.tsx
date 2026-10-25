@@ -134,6 +134,7 @@ export function ApprovalReview() {
               <span className="text-2xs font-semibold text-ink-3 tabular">{idx + 1} of {items.length}</span>
               <span className="text-[14px] font-semibold">{cur.payload.to_name}</span>
               {cur.payload.row?.Company && <span className="text-[13px] text-ink-3">· {cur.payload.row.Company}</span>}
+              {(cur.payload as any).touch > 1 && <span className="text-2xs font-semibold text-f-memory bg-f-memorybg h-5 px-1.5 rounded inline-flex items-center">Follow-up #{(cur.payload as any).touch} · no reply yet</span>}
               <div className="ml-auto flex gap-2">
                 {curDec.status !== 'pending' && !readOnly && <button className="btn-ghost btn-sm" onClick={() => setStatus(cur.id, 'pending', false)}><Undo2 className="h-3.5 w-3.5" />Undo</button>}
                 <button className={clsx('btn-sm', curDec.status === 'rejected' ? 'btn bg-f-approval text-white' : 'btn-danger')} disabled={readOnly} onClick={() => setStatus(cur.id, 'rejected')}><X className="h-4 w-4" />Reject</button>

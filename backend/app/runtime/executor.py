@@ -284,6 +284,8 @@ def _summarize(data: dict, mode: str, agent: Agent) -> dict[str, Any]:
         "sent": data.get("_sent", 0),
         "simulated": data.get("_simulated", 0),
         "deferred": data.get("_deferred", 0),
+        "followups": data.get("_followups", 0),
+        "suppressed": data.get("_suppressed", 0),
     }
     if mode == "test":
         s["headline"] = (f"Test passed — {s['drafted']} drafts would be sent for your approval. Nothing real happened."
@@ -363,6 +365,9 @@ def h_filter(c: StepCtx) -> dict:
         ok = True
         if op == "equals":
             ok = v.lower() == str(val).strip().lower()
+            if not ok and v.lower() in [str(x).strip().lower() for x in c.params.get("or_values") or []]:
+                r["_needs_memory"] = True  # only a follow-up candidate if *this agent* emailed them
+                ok = True
         elif op == "not_equals":
             ok = v.lower() != str(val).strip().lower()
         elif op == "contains":
@@ -390,21 +395,109 @@ def h_mem_exclude(c: StepCtx) -> dict:
     with session_scope() as db:
         entries = {e.key: (e.value, _aware(e.updated_at)) for e in db.scalars(
             select(MemoryEntry).where(MemoryEntry.agent_id == c.agent.id, MemoryEntry.namespace == ns))}
-    kept, skipped = [], []
+    seq = c.params.get("sequence") or None
+    kept, skipped, followups = [], [], 0
     cutoff = _now() - timedelta(days=cooldown) if cooldown else None
     for r in rows:
         k = (r.get(key_col) or "").strip().lower()
         hit = entries.get(k) if k else None
-        if hit and (cutoff is None or hit[1] >= cutoff):
-            skipped.append({"name": c.row_name(r), "key": k, "when": hit[1].isoformat() if hit[1] else None})
+        if not hit:
+            if r.get("_needs_memory"):
+                skipped.append({"name": c.row_name(r), "key": k, "when": None, "reason": "marked by someone else"})
+                continue
+            r["_touch"] = 1
+            kept.append(r)
+            continue
+        val, when = hit
+        base = {"name": c.row_name(r), "key": k, "when": when.isoformat() if when else None}
+        if val.get("replied"):
+            skipped.append(base | {"reason": "replied"})
+        elif seq:
+            touches = int(val.get("touches") or 1)
+            due = when is None or when <= _now() - timedelta(days=int(seq["after_days"]))
+            if touches >= int(seq["max_touches"]):
+                skipped.append(base | {"reason": "sequence finished"})
+            elif not due:
+                skipped.append(base | {"reason": f"waiting {seq['after_days']} days for a reply"})
+            else:
+                r["_touch"] = touches + 1
+                r["_prev_subject"] = val.get("first_subject") or val.get("subject") or ""
+                kept.append(r)
+                followups += 1
+        elif cutoff is None or (when and when >= cutoff):
+            skipped.append(base | {"reason": f"already {ns}"})
         else:
+            r["_touch"] = int(val.get("touches") or 1) + 1
             kept.append(r)
     if c.data.get("_matched") is None:
         c.data["_matched"] = len(rows)
-    msg = (f"Skipped {len(skipped)} already {ns} — {len(kept)} {c.ent['plural']} to go." if skipped else
-           f"None of these {c.ent['plural']} were {ns} before — {len(kept)} to go.")
-    return {"message": msg, "output": {"kept": len(kept), "skipped": skipped[:50], "memory_size": len(entries)},
-            "data": {"rows": kept, "_skipped_memory": len(skipped), "_matched": c.data.get("_matched")}}
+    new = len(kept) - followups
+    if seq:
+        msg = f"{new} new, {followups} due a follow-up, {len(skipped)} skipped (replied or not due yet)."
+    else:
+        msg = (f"Skipped {len(skipped)} already {ns} — {len(kept)} {c.ent['plural']} to go." if skipped else
+               f"None of these {c.ent['plural']} were {ns} before — {len(kept)} to go.")
+    return {"message": msg, "output": {"kept": len(kept), "followups": followups, "skipped": skipped[:50],
+                                       "memory_size": len(entries)},
+            "data": {"rows": kept, "_skipped_memory": len(skipped), "_followups": followups,
+                     "_matched": c.data.get("_matched")}}
+
+
+def _suppressed(org_id: str) -> dict[str, str]:
+    from ..models import Suppression
+    with session_scope() as db:
+        return {s.email.lower(): s.reason for s in db.scalars(select(Suppression).where(Suppression.org_id == org_id))}
+
+
+def h_suppress(c: StepCtx) -> dict:
+    rows = c.data.get("rows", [])
+    col = c.params.get("email_column") or (c.req.get("roles") or {}).get("email")
+    sup = _suppressed(c.agent.org_id)
+    kept, removed = [], []
+    for r in rows:
+        e = (r.get(col) or "").strip().lower()
+        if e and e in sup:
+            removed.append({"name": c.row_name(r), "email": e, "reason": sup[e]})
+        else:
+            kept.append(r)
+    msg = (f"Removed {len(removed)} on the do-not-contact list — {len(kept)} remain." if removed else
+           f"Nobody here is on the do-not-contact list ({len(sup)} people listed).")
+    return {"message": msg, "output": {"removed": removed, "list_size": len(sup)},
+            "data": {"rows": kept, "_suppressed": len(removed)}}
+
+
+def h_sheet_update(c: StepCtx) -> dict:
+    sent = c.data.get("sent", []) if c.mode == "live" else (c.data.get("approved") or c.data.get("drafts") or [])
+    keys = {(d.get("key") or d.get("to") or "").lower() for d in sent if (d.get("key") or d.get("to"))}
+    col, value, date_col = c.params["column"], c.params["value"], c.params.get("date_column") or "Last contacted"
+    if c.mode == "test":
+        return {"message": f"Test mode — would mark {len(keys)} rows “{value}” in {c.params.get('file_name')}.",
+                "output": {"would_update": len(keys)}}
+    if not keys:
+        return {"message": "Nobody was emailed, so the sheet was left unchanged.", "output": {"updated": 0}}
+    from ..runtime.files import write_new_version
+    with session_scope() as db:
+        f = db.get(DataFile, c.params["file_id"])
+        if f is None:
+            raise StepFailed("The spreadsheet was deleted, so it couldn’t be updated.")
+        columns, rows = read_table(f.path, f.kind)
+        key_col = c.params.get("key_column")
+        if col not in columns:
+            columns.append(col)
+        if date_col not in columns:
+            columns.append(date_col)
+        today = date.today().isoformat()
+        n = 0
+        for r in rows:
+            if (r.get(key_col) or "").strip().lower() in keys:
+                r[col] = value
+                r[date_col] = today
+                n += 1
+        v = write_new_version(db, f, columns, rows, source="agent", created_by=c.agent.name,
+                              note=f"Marked {n} rows “{value}”")
+        name = f.name
+    return {"message": f"Marked {n} rows “{value}” in {name} (version {v}).",
+            "output": {"updated": n, "version": v, "file_id": c.params["file_id"]}}
 
 
 def h_retrieve(c: StepCtx) -> dict:
@@ -460,7 +553,8 @@ def h_draft(c: StepCtx) -> dict:
             cites.append({"source_title": p["source_title"], "section": p["section"], "text": p["text"][:400]})
         drafts.append({"key": (r.get(key_col) or "").strip().lower(), "to": (r.get(email_col) or "").strip(),
                        "to_name": c.row_name(r), "subject": d["subject"], "body": d["body"],
-                       "row": _clean(r), "row_number": r.get("_row"), "citations": cites, "engine": d.get("engine")})
+                       "row": _clean(r), "row_number": r.get("_row"), "citations": cites, "engine": d.get("engine"),
+                       "touch": r.get("_touch", 1)})
     msg = f"Wrote {len(drafts)} personalised drafts" + (" with Claude." if engine == "claude" else ".")
     if deferred:
         msg += f" {deferred} more will be handled next run (limit {cap} per run)."
@@ -602,12 +696,16 @@ def h_send(c: StepCtx) -> dict:
         c.data["_approved"], c.data["_rejected"] = n_ok, n_rej
     else:
         items = c.data.get("drafts", [])
-    sent, failed = [], []
+    sent, failed, blocked = [], [], []
+    sup = _suppressed(c.agent.org_id)
     with session_scope() as db:
         org = db.get(Organization, c.agent.org_id)
         for d in items:
             if not EMAIL_RE.match(d.get("to", "")):
                 failed.append({"to": d.get("to"), "error": "invalid address"})
+                continue
+            if d.get("to", "").lower() in sup:
+                blocked.append(d.get("to_name") or d.get("to"))  # opted out while waiting for approval
                 continue
             key = f"{c.agent.id}:{c.execution_id}:{d['key'] or d['to'].lower()}"
             if db.scalars(select(OutboxMessage).where(OutboxMessage.idempotency_key == key)).first():
@@ -617,7 +715,8 @@ def h_send(c: StepCtx) -> dict:
                 transport = deliver(org.settings or {}, d["to"], d.get("to_name", ""), d["subject"], d["body"])
                 db.add(OutboxMessage(org_id=org.id, agent_id=c.agent.id, execution_id=c.execution_id,
                                      idempotency_key=key, to=d["to"], to_name=d.get("to_name", ""),
-                                     subject=d["subject"], body=d["body"], transport=transport, approved_by=approved_by))
+                                     subject=d["subject"], body=d["body"], transport=transport, approved_by=approved_by,
+                                     touch=int(d.get("touch") or 1)))
                 db.flush()
                 sent.append(d)
             except DeliveryError as exc:
@@ -634,9 +733,12 @@ def h_send(c: StepCtx) -> dict:
         msg += f" {c.data['_rejected']} rejected — not sent."
     if failed:
         msg += f" {len(failed)} failed."
+    if blocked:
+        msg += f" {len(blocked)} held back — they opted out after drafting."
     return {"message": msg, "output": {"sent": len(sent), "failed": failed,
                                        "recipients": [d["to_name"] for d in sent][:50]},
-            "data": {"sent": [{"key": d["key"], "to": d["to"], "to_name": d["to_name"], "subject": d["subject"]} for d in sent],
+            "data": {"sent": [{"key": d["key"], "to": d["to"], "to_name": d["to_name"], "subject": d["subject"],
+                               "touch": d.get("touch", 1)} for d in sent],
                      "_sent": len(sent), "_approved": c.data.get("_approved"), "_rejected": c.data.get("_rejected")}}
 
 
@@ -653,8 +755,11 @@ def h_mem_record(c: StepCtx) -> dict:
                 continue
             e = db.scalars(select(MemoryEntry).where(MemoryEntry.agent_id == c.agent.id, MemoryEntry.namespace == ns,
                                                      MemoryEntry.key == k)).first()
+            prev = dict(e.value or {}) if e else {}
             val = {"name": d.get("to_name"), "email": d.get("to"), "subject": d.get("subject"),
-                   "at": _now().isoformat()}
+                   "first_subject": prev.get("first_subject") or d.get("subject"),
+                   "touches": int(d.get("touch") or (int(prev.get("touches") or 0) + 1)),
+                   "replied": bool(prev.get("replied")), "at": _now().isoformat()}
             if e:
                 e.value = val
                 e.execution_id = c.execution_id
@@ -676,6 +781,7 @@ HANDLERS: dict[str, Callable[[StepCtx], dict]] = {
     "knowledge.retrieve": h_retrieve, "ai.draft": h_draft, "data.summarize": h_summarize,
     "ai.draft_report": h_draft_report, "safety.check": h_safety, "approval.request": h_approval,
     "email.send": h_send, "memory.record": h_mem_record, "notify.summary": h_notify,
+    "compliance.suppress": h_suppress, "spreadsheet.update": h_sheet_update,
 }
 assert set(HANDLERS) == set(TOOLS), "every registered tool needs a handler"
 

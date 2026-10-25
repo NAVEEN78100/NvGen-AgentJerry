@@ -54,6 +54,22 @@ class DataFile(Base):
     path: Mapped[str] = mapped_column(String(500))
     columns: Mapped[list[str]] = mapped_column(JSON, default=list)
     row_count: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class FileVersion(Base):
+    """Every change to a spreadsheet (re-upload or agent write-back) is kept."""
+    __tablename__ = "file_versions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    file_id: Mapped[str] = mapped_column(ForeignKey("data_files.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    path: Mapped[str] = mapped_column(String(500))
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[str] = mapped_column(String(20), default="upload")  # upload | agent
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -99,6 +115,8 @@ class Agent(Base):
     knowledge_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     engine: Mapped[str] = mapped_column(String(20), default="offline")
     last_test_passed_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    approver_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    failure_streak: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     deployed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -175,6 +193,7 @@ class Approval(Base):
     title: Mapped[str] = mapped_column(String(300))
     reason: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | decided | expired
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     decided_by: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -209,7 +228,44 @@ class OutboxMessage(Base):
     status: Mapped[str] = mapped_column(String(16), default="sent")  # sent | failed
     approved_by: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    touch: Mapped[int] = mapped_column(Integer, default=1)
+    replied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reply_category: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Reply(Base):
+    """An inbound reply to an email an agent sent."""
+    __tablename__ = "replies"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uid("rep"))
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    outbox_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    agent_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    from_email: Mapped[str] = mapped_column(String(254), index=True)
+    from_name: Mapped[str] = mapped_column(String(200), default="")
+    subject: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text)
+    # interested | question | not_now | not_interested | unsubscribe | out_of_office | other
+    category: Mapped[str] = mapped_column(String(20), default="other")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open | handled
+    suggested_reply: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    response_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class Suppression(Base):
+    """Workspace do-not-contact list. Enforced before drafting and again at send time."""
+    __tablename__ = "suppressions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    email: Mapped[str] = mapped_column(String(254))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(20), default="manual")  # manual | reply | import
+    created_by: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint("org_id", "email"),)
 
 
 class Notification(Base):

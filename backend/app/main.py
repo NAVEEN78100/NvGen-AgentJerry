@@ -18,7 +18,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(engine)
+    from .db import migrate
+    migrate()
     if config.SEED_DEMO:
         from .seed import seed
         seed()

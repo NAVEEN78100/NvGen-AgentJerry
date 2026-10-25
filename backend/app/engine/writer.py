@@ -84,6 +84,25 @@ def offline_draft(row: dict, roles: dict, spec: dict, passages: list[dict]) -> d
     sig = f"{close},\n{sender}\n{company}".rstrip()
     paras: list[str] = []
 
+    touch = int(row.get("_touch") or 1)
+    if touch >= 2 and purpose in ("follow_up", "custom", "welcome", "interview_invite"):
+        prev = row.get("_prev_subject") or ""
+        subject = f"Re: {prev}" if prev and not prev.lower().startswith("re:") else (prev or f"Following up, {first}")
+        if touch == 2:
+            paras.append({"friendly": "Just bringing this back to the top of your inbox in case it got buried.",
+                          "formal": "I wanted to follow up on my previous email in case it was missed.",
+                          "concise": "Quick nudge on my last note."}[tone])
+            if grounding:
+                paras.append(f"One thing worth knowing: {grounding[0].lower() + grounding[1:]}")
+            paras.append("If the timing isn’t right, no problem — reply “later” and I’ll check back next quarter.")
+        else:
+            paras.append({"friendly": "I don’t want to crowd your inbox, so this will be my last note for now.",
+                          "formal": "This will be my final follow-up for now; I don’t wish to take more of your time.",
+                          "concise": "Last note from me for now."}[tone])
+            paras.append("If it’s useful later, just reply to this email — it comes straight to me.")
+        body = f"{greet} {first},\n\n" + "\n\n".join(paras) + f"\n\n{sig}"
+        return {"subject": subject, "body": body, "engine": "offline", "used_passage": used if grounding else None}
+
     if purpose == "follow_up":
         topic = interest or (f"{industry.lower()} operations" if industry else "our conversation")
         subject = {"friendly": f"{first}, following up on {topic}",

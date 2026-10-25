@@ -1,4 +1,4 @@
-import { Cpu, Lock, Mail, RotateCcw, ShieldCheck, Wrench } from 'lucide-react'
+import { Ban, Copy, Cpu, Lock, Mail, RotateCcw, ShieldCheck, Webhook, Wrench, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { TOOL_ICON } from '../components/WorkflowGraph'
@@ -12,6 +12,7 @@ type S = {
   policy: { require_approval_external: boolean; require_approval_internal: boolean; max_emails_per_run: number }
   smtp: { enabled?: boolean; host?: string; port?: number; username?: string; password?: string; from_email?: string; from_name?: string }
   engine: { provider: string; model: string | null; enabled: boolean }
+  inbound_key: string | null
   tools: { name: string; label: string; category: string; description: string; sensitive: boolean; integration: string }[]
 }
 
@@ -85,6 +86,24 @@ export function SettingsPage() {
         {admin && <div className="mt-4"><button className="btn-primary" disabled={saving} onClick={() => patch({ smtp: { enabled: false, host: '', port: 587, username: '', from_email: '', from_name: '', ...smtp } }, smtp.enabled ? 'SMTP saved' : 'Using sandbox delivery')}>{saving ? <Spinner /> : null}Save delivery settings</button></div>}
       </section>
 
+      <DoNotContact />
+
+      {d.inbound_key && (
+        <section className="card p-5 mt-5">
+          <h2 className="flex items-center gap-2 text-[16px] font-semibold"><Webhook className="h-4 w-4 text-ink-2" />Inbound replies</h2>
+          <p className="mt-1 text-[13px] text-ink-2">Point your email provider’s inbound-parse webhook (SendGrid, Mailgun, Postmark) here so replies are sorted automatically. In sandbox mode, use “Simulate a reply” in the Outbox.</p>
+          <div className="mt-3 grid gap-2 text-[13px]">
+            {[['POST', `${window.location.origin}/api/inbound/email`], ['Header', `X-AgentJerry-Key: ${d.inbound_key}`], ['Body (JSON)', '{ "from_email", "from_name", "subject", "text" }']].map(([k, v]) => (
+              <div key={k} className="flex items-center gap-3 rounded-lg bg-paper border border-line px-3 py-2">
+                <span className="w-24 shrink-0 text-xs font-semibold text-ink-3">{k}</span>
+                <code className="flex-1 min-w-0 truncate text-xs">{v}</code>
+                <button className="btn-ghost btn-sm !px-2" aria-label={`Copy ${k}`} onClick={() => { navigator.clipboard?.writeText(v); toast('Copied') }}><Copy className="h-3.5 w-3.5" /></button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="card p-5 mt-5">
         <h2 className="flex items-center gap-2 text-[16px] font-semibold"><Cpu className="h-4 w-4 text-brand" />AI engine</h2>
         <p className="mt-1 text-[13.5px]">{d.engine.enabled ? <>Using <b>{d.engine.model}</b> for understanding and writing, with the offline engine as an automatic fallback.</> : <>Using the <b>offline engine</b>: deterministic understanding and grounded templates, no internet needed. Set <code className="text-xs bg-paper px-1 rounded">ANTHROPIC_API_KEY</code> on the server to use Claude.</>}</p>
@@ -114,5 +133,38 @@ export function SettingsPage() {
         <p className="text-[14px]">All agents, runs, approvals, memory and uploads are deleted and the sample data is restored. You’ll sign in again with the demo account.</p>
       </Modal>
     </div>
+  )
+}
+
+type Supp = { id: number; email: string; reason: string; source: string; created_by: string; created_at: string }
+
+function DoNotContact() {
+  const list = useApi<Supp[]>('/suppressions')
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const add = async () => {
+    setBusy(true)
+    try { const r = await api('/suppressions', { body: { emails: text, reason: 'Added manually' } }); toast.success(`Added ${r.added}${r.already_listed ? ` · ${r.already_listed} already listed` : ''}`); setText(''); list.reload() }
+    catch (e: any) { toast.error(e.message) } finally { setBusy(false) }
+  }
+  const remove = async (s: Supp) => { try { await api(`/suppressions/${s.id}`, { method: 'DELETE' }); toast(`${s.email} can be emailed again`); list.reload() } catch (e: any) { toast.error(e.message) } }
+  return (
+    <section className="card p-5 mt-5">
+      <h2 className="flex items-center gap-2 text-[16px] font-semibold"><Ban className="h-4 w-4" style={{ color: HEX.approval }} />Do-not-contact list</h2>
+      <p className="mt-1 text-[13px] text-ink-2">No agent will ever email these people. It’s checked before drafting and again at the moment of sending. Unsubscribe replies are added automatically.</p>
+      <form className="mt-3 flex gap-2" onSubmit={e => { e.preventDefault(); text.trim() && add() }}>
+        <input className="input" placeholder="name@company.com, another@company.com" value={text} onChange={e => setText(e.target.value)} aria-label="Emails to add" />
+        <button className="btn-primary h-10" disabled={busy || !text.trim()}>{busy ? <Spinner /> : 'Add'}</button>
+      </form>
+      <ul className="mt-3 divide-y divide-line rounded-lg border border-line">
+        {!list.data?.length && <li className="px-3 py-3 text-[13px] text-ink-3">Nobody yet.</li>}
+        {list.data?.map(s => (
+          <li key={s.id} className="flex items-center gap-3 px-3 py-2">
+            <span className="min-w-0 flex-1"><span className="block text-[13.5px] font-semibold truncate">{s.email}</span><span className="block text-xs text-ink-3 truncate">{s.reason} · {s.source === 'reply' ? 'from a reply' : `added by ${s.created_by}`}</span></span>
+            <button className="btn-ghost btn-sm !px-2" onClick={() => remove(s)} aria-label={`Remove ${s.email}`}><X className="h-4 w-4" /></button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

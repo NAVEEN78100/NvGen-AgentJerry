@@ -35,6 +35,9 @@ def plan(req: dict[str, Any]) -> list[dict[str, Any]]:
         {"file_id": req["source"]["file_id"], "file_name": req["source"]["file_name"]})
 
     f = req.get("filter")
+    wb, seqr = req.get("writeback") or {}, req.get("sequence") or {}
+    if f and wb.get("enabled") and seqr.get("enabled") and f.get("op") == "equals" and f.get("column") == wb.get("column"):
+        f = dict(f, or_values=[wb["value"]], label=f"{f['label']} or “{wb['value']}” (for follow-ups)")
     if f:
         add("data.filter", f"Keep only {req.get('filter_word') or 'matching'} {ent['plural']}",
             f"Keep rows where {f['label']}.",
@@ -55,10 +58,18 @@ def plan(req: dict[str, Any]) -> list[dict[str, Any]]:
              "company": req["message"]["company"], "entity": ent})
     else:
         mem = req["memory"]
-        add("memory.exclude", f"Skip {ent['plural']} already {mem['namespace']}",
+        if (req.get("compliance") or {}).get("suppression", True):
+            add("compliance.suppress", "Respect the do-not-contact list",
+                f"Remove any {ent['singular']} who unsubscribed or asked not to be contacted.",
+                "People who opt out must never be emailed again — checked before anything is written.",
+                {"email_column": roles.get("email")})
+        seq = req.get("sequence") or {}
+        add("memory.exclude", f"Skip {ent['plural']} already {mem['namespace']}" if not seq.get("enabled") else f"Pick who needs an email or a follow-up",
             mem["description"] + ".",
-            "Prevents duplicate emails across weekly runs.",
-            {"namespace": mem["namespace"], "key_column": mem["key_column"], "cooldown_days": mem.get("cooldown_days")})
+            "Prevents duplicate emails across runs." if not seq.get("enabled") else
+            "Sends first emails to new people and a follow-up to anyone who hasn’t replied in time.",
+            {"namespace": mem["namespace"], "key_column": mem["key_column"], "cooldown_days": mem.get("cooldown_days"),
+             "sequence": seq if seq.get("enabled") else None})
         if req["knowledge"]["enabled"]:
             add("knowledge.retrieve", "Look up relevant company knowledge",
                 f"Search {', '.join(req['knowledge']['titles'][:3])} for what’s relevant to each {ent['singular']}.",
@@ -92,6 +103,13 @@ def plan(req: dict[str, Any]) -> list[dict[str, Any]]:
         add("memory.record", "Remember who was emailed", "Save each recipient so future runs skip them.",
             "Lets the next run know who has already been handled.",
             {"namespace": mem["namespace"], "key_column": mem["key_column"]})
+        wb = req.get("writeback") or {}
+        if wb.get("enabled"):
+            add("spreadsheet.update", f"Mark them “{wb['value']}” in the sheet",
+                f"Set {wb['column']} to “{wb['value']}” and fill in {wb['date_column']} for everyone emailed.",
+                "Keeps your spreadsheet the source of truth — no manual updating after a run.",
+                {"file_id": req["source"]["file_id"], "file_name": req["source"]["file_name"], "column": wb["column"],
+                 "value": wb["value"], "date_column": wb["date_column"], "key_column": mem["key_column"]})
 
     add("notify.summary", "Send you a summary", "Post what happened to your notifications.",
         "So you always know what the agent did.", {})

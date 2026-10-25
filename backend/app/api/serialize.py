@@ -94,7 +94,7 @@ def approval_out(ap: Approval, agent_name: str | None = None, with_items: bool =
 
 def file_out(f: DataFile) -> dict[str, Any]:
     return {"id": f.id, "name": f.name, "kind": f.kind, "columns": f.columns, "row_count": f.row_count,
-            "created_at": iso(f.created_at)}
+            "version": f.version or 1, "created_at": iso(f.created_at), "updated_at": iso(f.updated_at)}
 
 
 def knowledge_out(k: KnowledgeSource) -> dict[str, Any]:
@@ -105,4 +105,5 @@ def knowledge_out(k: KnowledgeSource) -> dict[str, Any]:
 def outbox_out(m: OutboxMessage, agent_name: str | None = None) -> dict[str, Any]:
     return {"id": m.id, "agent_id": m.agent_id, "agent_name": agent_name, "execution_id": m.execution_id,
             "to": m.to, "to_name": m.to_name, "subject": m.subject, "body": m.body, "transport": m.transport,
-            "status": m.status, "sent_at": iso(m.sent_at)}
+            "status": m.status, "sent_at": iso(m.sent_at), "touch": m.touch, "replied_at": iso(m.replied_at),
+            "reply_category": m.reply_category}

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -131,12 +131,16 @@ class RefineIn(BaseModel):
 TEMPLATES = [
     {"id": "sales", "department": "sales", "title": "Weekly lead follow-ups",
      "prompt": "Every Monday at 9am, read my sales spreadsheet, identify new leads, generate personalized follow-up emails, and show them to me for approval."},
+    {"id": "sequence", "department": "sales", "title": "Follow-up sequence that stops on reply",
+     "prompt": "Every Monday at 9am, read my sales spreadsheet, identify new leads and draft personalized follow-up emails for my approval. If they don't reply in 3 days, follow up again, up to 3 times, and mark them as contacted."},
     {"id": "finance", "department": "finance", "title": "Overdue invoice reminders",
      "prompt": "Every weekday at 10am, check the invoices sheet for overdue invoices and send a polite payment reminder to each client after I approve."},
     {"id": "hr", "department": "hr", "title": "Interview invitations",
      "prompt": "Find shortlisted candidates in the candidates spreadsheet and draft formal interview invitations for me to review before sending."},
     {"id": "report", "department": "sales", "title": "Weekly pipeline report",
-     "prompt": "Every Friday at 5pm, summarize my sales spreadsheet and email the report to my manager."},
+     "prompt": "Every Friday at 5pm, summarize the sales pipeline and email it to my manager."},
+    {"id": "event", "department": "hr", "title": "Runs when a file is updated",
+     "prompt": "Whenever the candidates spreadsheet is updated, draft interview invitations for shortlisted candidates for me to review."},
 ]
 
 
@@ -431,6 +435,8 @@ def files_upload(file: UploadFile = File(...), user: User = Depends(current_user
     f = DataFile(org_id=user.org_id, uploaded_by=user.id, name=name, kind=ext, path=str(dest), columns=cols, row_count=len(rows))
     db.add(f)
     db.flush()
+    from ..runtime.files import ensure_initial_version as _eiv
+    _eiv(db, f, user.name)
     audit(db, user.org_id, user.name, "file.uploaded", "file", f.id, f"Uploaded {name} ({len(rows)} rows)")
     db.commit()
     return S.file_out(f)
@@ -558,7 +564,12 @@ def settings_get(user: User = Depends(current_user), db: Session = Depends(get_d
     smtp = dict((org.settings or {}).get("smtp") or {})
     if smtp.get("password"):
         smtp["password"] = "••••••••"
+    if not (org.settings or {}).get("inbound_key"):
+        import secrets
+        org.settings = {**(org.settings or {}), "inbound_key": secrets.token_urlsafe(18)}
+        db.commit()
     return {"org": {"id": org.id, "name": org.name}, "policy": service.default_policy(org), "smtp": smtp,
+            "inbound_key": org.settings.get("inbound_key") if user.role == "admin" else None,
             "engine": llm.status(), "tools": catalog(), "is_admin": user.role == "admin"}
 
 
@@ -618,3 +629,201 @@ def demo_reset(user: User = Depends(require_admin)):
     from ..seed import reset_demo
     reset_demo()
     return {"ok": True}
+
+
+# ------------------------------------------------------------------ replies & do-not-contact
+from ..models import FileVersion, Reply, Suppression  # noqa: E402
+from ..runtime import replies as R  # noqa: E402
+from ..runtime.files import ensure_initial_version, write_new_version  # noqa: E402
+
+
+@router.get("/replies")
+def replies_list(category: str = "all", status: str = "open", user: User = Depends(current_user), db: Session = Depends(get_db)):
+    q = select(Reply).where(Reply.org_id == user.org_id)
+    if status != "all":
+        q = q.where(Reply.status == status)
+    if category != "all":
+        q = q.where(Reply.category == category)
+    rows = db.scalars(q.order_by(Reply.received_at.desc()).limit(200)).all()
+    names = {a.id: a.name for a in db.scalars(select(Agent).where(Agent.org_id == user.org_id))}
+    counts: dict[str, int] = {}
+    for r in db.scalars(select(Reply).where(Reply.org_id == user.org_id, Reply.status == "open")):
+        counts[r.category] = counts.get(r.category, 0) + 1
+    return {"items": [R.reply_out(r, db.get(OutboxMessage, r.outbox_id) if r.outbox_id else None, names.get(r.agent_id)) for r in rows],
+            "open_counts": counts}
+
+
+class SimReplyIn(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+
+
+@router.post("/outbox/{msg_id}/reply")
+def outbox_simulate_reply(msg_id: str, body: SimReplyIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Sandbox: record a reply from the recipient (in production replies arrive via /api/inbound/email)."""
+    m = db.get(OutboxMessage, msg_id)
+    if not m or m.org_id != user.org_id:
+        raise HTTPException(404, "Message not found.")
+    org = db.get(Organization, user.org_id)
+    rep = R.record_reply(db, org, m.to, body.body, from_name=m.to_name, outbox_id=m.id, actor=f"{m.to_name or m.to} (sandbox reply)")
+    db.commit()
+    return R.reply_out(rep, m)
+
+
+class InboundIn(BaseModel):
+    from_email: str
+    from_name: str = ""
+    subject: str = ""
+    text: str
+
+
+@router.post("/inbound/email")
+def inbound_email(body: InboundIn, request_key: str | None = None, db: Session = Depends(get_db),
+                  x_agentjerry_key: str | None = Header(default=None)):
+    """Webhook for your email provider's inbound parse (SendGrid, Mailgun, Postmark…)."""
+    key = x_agentjerry_key or request_key
+    org = next((o for o in db.scalars(select(Organization)) if key and (o.settings or {}).get("inbound_key") == key), None)
+    if org is None:
+        raise HTTPException(401, "Invalid inbound key.")
+    rep = R.record_reply(db, org, body.from_email, body.text, body.subject, body.from_name)
+    db.commit()
+    return {"ok": True, "id": rep.id, "category": rep.category}
+
+
+class RespondIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=300)
+    body: str = Field(min_length=1, max_length=10000)
+
+
+@router.post("/replies/{rid}/respond")
+def reply_respond(rid: str, body: RespondIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from ..tools.email_transport import DeliveryError, deliver
+    rep = db.get(Reply, rid)
+    if not rep or rep.org_id != user.org_id:
+        raise HTTPException(404, "Reply not found.")
+    if rep.response_id:
+        raise HTTPException(409, "You already responded to this reply.")
+    if db.scalars(select(Suppression).where(Suppression.org_id == user.org_id, Suppression.email == rep.from_email)).first():
+        raise HTTPException(409, "This person is on the do-not-contact list.")
+    org = db.get(Organization, user.org_id)
+    try:
+        transport = deliver(org.settings or {}, rep.from_email, rep.from_name, body.subject, body.body)
+    except DeliveryError as exc:
+        raise HTTPException(502, f"Couldn’t send: {exc}")
+    m = OutboxMessage(org_id=org.id, agent_id=rep.agent_id or "", execution_id="manual", idempotency_key=f"reply:{rep.id}",
+                      to=rep.from_email, to_name=rep.from_name, subject=body.subject, body=body.body, transport=transport,
+                      approved_by=user.id, touch=0)
+    db.add(m)
+    db.flush()
+    rep.response_id = m.id
+    rep.status = "handled"
+    audit(db, org.id, user.name, "reply.responded", "reply", rep.id, f"Responded to {rep.from_name or rep.from_email}")
+    db.commit()
+    return R.reply_out(rep, db.get(OutboxMessage, rep.outbox_id) if rep.outbox_id else None)
+
+
+@router.post("/replies/{rid}/status")
+def reply_status(rid: str, body: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rep = db.get(Reply, rid)
+    if not rep or rep.org_id != user.org_id:
+        raise HTTPException(404, "Reply not found.")
+    st = body.get("status")
+    if st not in ("open", "handled"):
+        raise HTTPException(422, "Status must be open or handled.")
+    rep.status = st
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/suppressions")
+def suppressions(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = db.scalars(select(Suppression).where(Suppression.org_id == user.org_id).order_by(Suppression.created_at.desc())).all()
+    return [{"id": s.id, "email": s.email, "reason": s.reason, "source": s.source, "created_by": s.created_by,
+             "created_at": S.iso(s.created_at)} for s in rows]
+
+
+class SuppIn(BaseModel):
+    emails: str = Field(min_length=3, max_length=20000)
+    reason: str = ""
+
+
+@router.post("/suppressions")
+def suppression_add(body: SuppIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from ..tools.spreadsheet import EMAIL_RE
+    found = [e.strip().lower() for e in re.split(r"[\s,;]+", body.emails) if e.strip()]
+    bad = [e for e in found if not EMAIL_RE.match(e)]
+    if bad:
+        raise HTTPException(422, f"Not a valid address: {bad[0]}")
+    added = sum(R.add_suppression(db, user.org_id, e, body.reason or "Added manually", "manual", user.name) for e in found)
+    db.commit()
+    return {"added": added, "already_listed": len(found) - added}
+
+
+@router.delete("/suppressions/{sid}")
+def suppression_remove(sid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    s = db.get(Suppression, sid)
+    if not s or s.org_id != user.org_id:
+        raise HTTPException(404, "Not found.")
+    db.delete(s)
+    audit(db, user.org_id, user.name, "suppression.removed", "suppression", s.email, f"Removed {s.email} from the do-not-contact list")
+    db.commit()
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------ file versions & event trigger
+@router.get("/files/{file_id}/versions")
+def file_versions(file_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    f = db.get(DataFile, file_id)
+    if not f or f.org_id != user.org_id:
+        raise HTTPException(404, "File not found.")
+    ensure_initial_version(db, f)
+    db.commit()
+    rows = db.scalars(select(FileVersion).where(FileVersion.file_id == f.id).order_by(FileVersion.version.desc())).all()
+    return [{"version": v.version, "row_count": v.row_count, "source": v.source, "note": v.note, "created_by": v.created_by,
+             "created_at": S.iso(v.created_at), "current": v.version == f.version} for v in rows]
+
+
+@router.get("/files/{file_id}/download")
+def file_download(file_id: str, version: int | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    f = db.get(DataFile, file_id)
+    if not f or f.org_id != user.org_id:
+        raise HTTPException(404, "File not found.")
+    path = f.path
+    if version and version != f.version:
+        v = db.scalars(select(FileVersion).where(FileVersion.file_id == f.id, FileVersion.version == version)).first()
+        if not v:
+            raise HTTPException(404, "Version not found.")
+        path = v.path
+    stem = Path(f.name).stem
+    return FileResponse(path, filename=f"{stem}_v{version or f.version}.{f.kind}")
+
+
+@router.post("/files/{file_id}/replace")
+def file_replace(file_id: str, file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    f = db.get(DataFile, file_id)
+    if not f or f.org_id != user.org_id:
+        raise HTTPException(404, "File not found.")
+    dest, name, ext = _save_upload(file, ("csv", "xlsx"))
+    if ext != f.kind:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(415, f"Upload a .{f.kind} file to replace {f.name}.")
+    try:
+        cols, rows = read_table(dest, ext)
+    except SpreadsheetError as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(422, str(exc))
+    v = write_new_version(db, f, cols, rows, source="upload", created_by=user.name, note=f"Uploaded {name}")
+    dest.unlink(missing_ok=True)
+    audit(db, user.org_id, user.name, "file.replaced", "file", f.id, f"Uploaded version {v} of {f.name} ({len(rows)} rows)")
+    db.commit()
+    started = []
+    for a in db.scalars(select(Agent).where(Agent.org_id == user.org_id, Agent.status == "deployed")).all():
+        tr = a.trigger or {}
+        if tr.get("type") == "file_updated" and tr.get("file_id") == f.id:
+            try:
+                ex = executor.start_execution(db, a, "live", "file_updated", user)
+                started.append({"agent_id": a.id, "agent_name": a.name, "run_id": ex.id})
+            except executor.RunError as exc:
+                from ..security import notify as _n
+                _n(db, user.org_id, "info", f"{a.name} didn’t start", str(exc), f"/agents/{a.id}")
+                db.commit()
+    return S.file_out(f) | {"triggered": started}

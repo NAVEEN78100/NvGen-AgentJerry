@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, LayoutGrid, LogOut, Menu, Play, Plus,
+  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, LayoutGrid, LogOut, MailOpen, Menu, Play, Plus,
   Send, Settings, X, XCircle,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -22,7 +22,7 @@ function Logo() {
   )
 }
 
-function NavItem({ to, icon, label, badge, end }: { to: string; icon: ReactNode; label: string; badge?: number; end?: boolean }) {
+function NavItem({ to, icon, label, badge, end, tone }: { to: string; icon: ReactNode; label: string; badge?: number; end?: boolean; tone?: 'soft' }) {
   return (
     <NavLink to={to} end={end} className={({ isActive }) => clsx(
       'group relative flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13.5px] font-semibold transition-colors',
@@ -31,13 +31,13 @@ function NavItem({ to, icon, label, badge, end }: { to: string; icon: ReactNode;
         {isActive && <motion.span layoutId="nav-active" className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-ink" />}
         <span className={clsx('transition-colors', isActive ? 'text-ink' : 'text-ink-3 group-hover:text-ink-2')}>{icon}</span>
         <span className="flex-1">{label}</span>
-        {!!badge && <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-f-approval text-white text-2xs font-bold grid place-items-center tabular">{badge}</span>}
+        {!!badge && <span className={clsx('min-w-[20px] h-5 px-1.5 rounded-full text-2xs font-bold grid place-items-center tabular', tone === 'soft' ? 'bg-f-action text-white' : 'bg-f-approval text-white')}>{badge}</span>}
       </>)}
     </NavLink>
   )
 }
 
-function Sidebar({ pending, onNavigate }: { pending: number; onNavigate?: () => void }) {
+function Sidebar({ pending, replies, onNavigate }: { pending: number; replies: number; onNavigate?: () => void }) {
   const { user, org, logout } = useAuth()
   const i = 'h-[18px] w-[18px]'
   return (
@@ -50,6 +50,7 @@ function Sidebar({ pending, onNavigate }: { pending: number; onNavigate?: () => 
         <NavItem to="/" end icon={<LayoutGrid className={i} />} label="Home" />
         <NavItem to="/agents" icon={<Bot className={i} />} label="Agents" />
         <NavItem to="/approvals" icon={<Inbox className={i} />} label="Approvals" badge={pending} />
+        <NavItem to="/replies" icon={<MailOpen className={i} />} label="Replies" badge={replies} tone="soft" />
         <NavItem to="/runs" icon={<Play className={i} />} label="Runs" />
       </nav>
       <div className="mt-6 px-5 text-2xs font-semibold text-ink-3">Workspace</div>
@@ -81,6 +82,7 @@ const KIND_ICON: Record<string, ReactNode> = {
   run_completed: <Check className="h-3.5 w-3.5 text-f-action" />,
   run_failed: <XCircle className="h-3.5 w-3.5 text-f-approval" />,
   info: <Bell className="h-3.5 w-3.5 text-ink-3" />,
+  reply: <MailOpen className="h-3.5 w-3.5 text-f-action" />,
 }
 
 function Notifications({ data, reload }: { data?: Counts; reload: () => void }) {
@@ -146,13 +148,15 @@ export function Layout() {
   const notes = useApi<Counts>('/notifications', { poll: 5000 })
   const approvals = useApi<any[]>('/approvals?status=pending', { poll: 5000 })
   const pending = approvals.data?.length || 0
+  const replyCounts = useApi<{ open_counts: Record<string, number> }>('/replies?status=open', { poll: 8000 })
+  const replies = Object.values(replyCounts.data?.open_counts || {}).reduce((a, b) => a + b, 0)
   useEffect(() => { setDrawer(false); window.scrollTo(0, 0) }, [loc.pathname])
-  useEffect(() => { approvals.reload(); notes.reload() }, [loc.pathname]) // eslint-disable-line
+  useEffect(() => { approvals.reload(); notes.reload(); replyCounts.reload() }, [loc.pathname]) // eslint-disable-line
 
   return (
     <div className="min-h-screen lg:pl-[248px]">
       <aside className="hidden lg:block fixed inset-y-0 left-0 w-[248px] bg-surface border-r border-line z-30">
-        <Sidebar pending={pending} />
+        <Sidebar pending={pending} replies={replies} />
       </aside>
       <AnimatePresence>
         {drawer && (
@@ -161,7 +165,7 @@ export function Layout() {
             <motion.aside initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }} transition={{ type: 'spring', stiffness: 400, damping: 38 }}
               className="absolute inset-y-0 left-0 w-[272px] bg-surface shadow-pop">
               <button className="absolute top-4 right-3 btn-ghost btn-sm !px-2" onClick={() => setDrawer(false)} aria-label="Close menu"><X className="h-4 w-4" /></button>
-              <Sidebar pending={pending} onNavigate={() => setDrawer(false)} />
+              <Sidebar pending={pending} replies={replies} onNavigate={() => setDrawer(false)} />
             </motion.aside>
           </motion.div>
         )}

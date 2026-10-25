@@ -74,6 +74,9 @@ TONE_WORDS = {
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 
+WORD_NUM = {"a": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7}
+
+
 def _span(spans: list[dict], m: re.Match, field: str, label: str, group: int = 0) -> None:
     s, e = m.span(group)
     if s < 0:
@@ -132,6 +135,9 @@ def parse_trigger(text: str, spans: list[dict]) -> dict[str, Any]:
         _span(spans, m, "trigger", "When it runs")
     elif (m := re.search(r"\b(every\s+month|monthly|once\s+a\s+month|(on\s+the\s+)?(1st|first)\s+of\s+(every|each|the)\s+month|end\s+of\s+(every|each|the)\s+month)\b", t)):
         trig.update(type="schedule", frequency="monthly", day_of_month=28 if "end of" in m.group(0) else 1)
+        _span(spans, m, "trigger", "When it runs")
+    elif (m := re.search(r"\b(whenever|when|each time|every time|as soon as)\s+(i upload\s+)?(the |my |our |a new |a fresh )?(updated\s+)?(?:[a-z]+\s+)?(spreadsheet|sheet|file|list|tracker|[\w-]+\.(?:csv|xlsx))\s*(is |gets |has been )?(updated|uploaded|changed|replaced|refreshed)?\b", t)) and (m.group(7) or m.group(2) or m.group(4)):
+        trig.update(type="file_updated")
         _span(spans, m, "trigger", "When it runs")
     elif (m := re.search(r"\b(when i (click|ask|say|press)|on demand|manually|whenever i (want|ask|need))\b", t)):
         trig.update(type="manual")
@@ -269,6 +275,31 @@ def understand(text: str, user_name: str = "") -> dict[str, Any]:
             mentions.append(topic)
             _span(spans, m, "knowledge", "Also mention")
 
+    # follow-up sequence: "if they don't reply in 3 days, follow up again"
+    sequence = None
+    m = re.search(r"\b(if|when)\s+[^.;]{0,40}?\b(no|not|don'?t|doesn'?t|do not|does not|haven'?t|hasn'?t|didn'?t|never)\b[^.;]{0,15}?\b(reply|replies|respond|response|answer|hear back)[^.;]{0,25}?\b(?:in|within|after|for|by)\s+(\d+|one|two|three|four|five|six|seven|a)\s+(days?|weeks?)", t)
+    if not m:
+        m = re.search(r"\bfollow[\s-]?up\s+again\s+(?:after|in)\s+()()()(\d+|one|two|three|four|five|six|seven|a)\s+(days?|weeks?)", t)
+    if m:
+        n = WORD_NUM.get(m.group(4), None) if not m.group(4).isdigit() else int(m.group(4))
+        days = (n or 3) * (7 if m.group(5).startswith("week") else 1)
+        mt = re.search(r"\bup to\s+(\d+|two|three|four|five)\s+(times|follow[\s-]?ups|emails|reminders|touches)", t)
+        touches = (int(mt.group(1)) if mt.group(1).isdigit() else WORD_NUM[mt.group(1)]) if mt else 2
+        sequence = {"after_days": max(1, min(days, 60)), "max_touches": max(2, min(touches, 5))}
+        _span(spans, m, "memory", "Follows up if no reply")
+
+    # write-back: "mark them as contacted", "update the sheet"
+    writeback = None
+    m = re.search(r"\b(mark|set|update)\s+(them|it|those|these|each one|the rows?|the leads?|their status|the status)\s+(as|to)\s+[\"“']?([a-z][a-z \-]{2,24}?)[\"”']?(?=[.,;!]|$|\s+(?:in|on|and|after|once|when))", t)
+    if m:
+        writeback = {"value": m.group(4).strip().title()}
+        _span(spans, m, "data", "Updates the sheet")
+    else:
+        m = re.search(r"\b(update|write back to|keep)\s+(the|my|our)\s+(spreadsheet|sheet|tracker|list)(\s+up to date)?", t)
+        if m:
+            writeback = {"value": None}
+            _span(spans, m, "data", "Updates the sheet")
+
     spans.sort(key=lambda s: s["start"])
     return {
         "purpose": purpose,
@@ -290,4 +321,6 @@ def understand(text: str, user_name: str = "") -> dict[str, Any]:
         "understood": purpose is not None,
         "text": text,
         "mentions": mentions,
+        "sequence": sequence,
+        "writeback": writeback,
     }

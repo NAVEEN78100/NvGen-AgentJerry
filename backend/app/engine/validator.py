@@ -108,6 +108,18 @@ def validate(steps: list[dict[str, Any]], req: dict[str, Any], policy: dict[str,
                              f"Uses “{key}” to remember who was emailed." if ok and key else
                              "No memory key — duplicates possible."))
 
+    # 7b. do-not-contact list respected before drafting
+    if req.get("pattern") == "outreach" and "compliance.suppress" in tools_in_order:
+        ok = tools_in_order.index("compliance.suppress") < tools_in_order.index("ai.draft") if "ai.draft" in tools_in_order else True
+        checks.append(_check("compliance", "Respects the do-not-contact list", "pass" if ok else "fail",
+                             "Opted-out people are removed before any email is written." if ok else
+                             "The do-not-contact check runs after drafting."))
+    if "spreadsheet.update" in tools_in_order and "email.send" in tools_in_order:
+        ok = tools_in_order.index("spreadsheet.update") > tools_in_order.index("email.send")
+        checks.append(_check("writeback", "Updates the sheet only after sending", "pass" if ok else "fail",
+                             "Only people who were actually emailed are marked in the sheet." if ok else
+                             "The sheet would be updated before emails are sent."))
+
     # 8. recipient
     if "email.send" in tools_in_order:
         if req.get("pattern") == "report":

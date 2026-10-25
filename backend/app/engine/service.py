@@ -87,6 +87,10 @@ def _merge_refinement(base: dict[str, Any], delta: dict[str, Any], answers: dict
     if delta.get("approval_explicit") is not None:
         merged["approval_explicit"] = delta["approval_explicit"]
         answers.pop("approval", None)
+    for k, ak in (("sequence", "sequence"), ("writeback", "writeback")):
+        if delta.get(k):
+            merged[k] = delta[k]
+            answers.pop(ak, None)
     if delta.get("mentions"):
         merged["mentions"] = list(dict.fromkeys((merged.get("mentions") or []) + delta["mentions"]))
     if (delta.get("source") or {}).get("hint"):
@@ -111,6 +115,9 @@ def _summary_fields(req: dict[str, Any]) -> list[dict[str, Any]]:
                                  f"{req['filter_word'].capitalize()} {req['entity']['plural']} — rule not set" if req.get("filter_word") else
                                  f"All {req['entity']['plural']}")})
         fields.append({"field": "memory", "label": "What it remembers", "value": req["memory"]["description"]})
+        if (req.get("writeback") or {}).get("enabled"):
+            wb = req["writeback"]
+            fields.append({"field": "data", "label": "Updates the sheet", "value": f"Sets {wb['column']} to “{wb['value']}” and records the date"})
     else:
         fields.append({"field": "output", "label": "Who receives it", "value": req["recipient"].get("email")})
     if req["knowledge"]["enabled"]:
@@ -177,7 +184,7 @@ def refine(db: Session, agent: Agent, user: User, text: str) -> Agent:
     delta, _ = _parse(text, user.name)
     answers = dict(state.get("answers", {}))
     state["parsed"] = _merge_refinement(state.get("parsed", {}), delta, answers)
-    if not delta.get("understood") and not any(delta.get(k) for k in ("tone", "sender", "approval_explicit", "fixed_email", "mentions")) \
+    if not delta.get("understood") and not any(delta.get(k) for k in ("tone", "sender", "approval_explicit", "fixed_email", "mentions", "sequence", "writeback")) \
             and not (delta.get("trigger") or {}).get("type"):
         # free-form writing guidance, e.g. "mention our Diwali offer"
         answers["instructions"] = (answers.get("instructions", "") + " " + text).strip()

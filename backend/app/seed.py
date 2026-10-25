@@ -135,6 +135,9 @@ def seed(with_history: bool = True) -> None:
         _add_knowledge(db, org.id, pdf, "Brightpath product brief")
         _add_knowledge(db, org.id, s / "Payment terms policy.md", "Payment terms policy")
         _add_knowledge(db, org.id, s / "Hiring process.md", "Hiring process")
+        from .models import Suppression
+        db.add(Suppression(org_id=org.id, email="lakshmi@homeneeds.example", reason="Asked on a call not to receive emails",
+                           source="manual", created_by="Priya Raman"))
         arun_id = arun.id
 
     if with_history:

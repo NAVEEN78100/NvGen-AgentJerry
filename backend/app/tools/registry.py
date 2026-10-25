@@ -25,6 +25,8 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
              "Loads every row from a CSV or Excel file.", ("file_id",), (), ("rows",), integration="Spreadsheet"),
     ToolSpec("data.filter", "Filter rows", "audience",
              "Keeps only the rows that match a condition.", ("column", "op"), ("rows",), ("rows",)),
+    ToolSpec("compliance.suppress", "Respect do-not-contact list", "safety",
+             "Removes anyone who unsubscribed or is on your workspace’s do-not-contact list.", (), ("rows",), ("rows",)),
     ToolSpec("memory.exclude", "Skip already handled", "memory",
              "Removes anyone this agent has already handled in earlier runs.", ("namespace", "key_column"), ("rows",), ("rows",)),
     ToolSpec("knowledge.retrieve", "Look up company knowledge", "knowledge",
@@ -48,6 +50,9 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
     ToolSpec("memory.record", "Remember who was handled", "memory",
              "Saves who received an email so the next run skips them.", ("namespace", "key_column"),
              ("sent",), (), side_effect=True),
+    ToolSpec("spreadsheet.update", "Update the spreadsheet", "data",
+             "Writes the new status and date back to the sheet as a new version you can download.", ("file_id", "column", "value"),
+             ("sent",), (), side_effect=True, integration="Spreadsheet"),
     ToolSpec("notify.summary", "Send you a summary", "output",
              "Posts a run summary to your notifications.", (), (), ()),
 ]}

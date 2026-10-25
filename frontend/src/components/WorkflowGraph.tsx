@@ -2,7 +2,7 @@ import { Background, Handle, Position, ReactFlow, type Edge, type Node, type Nod
 import '@xyflow/react/dist/style.css'
 import clsx from 'clsx'
 import {
-  BarChart3, Bell, BookOpen, Bookmark, Check, FileSpreadsheet, FileText, Filter, History, Hourglass, Lock,
+  BarChart3, Bell, BookOpen, Bookmark, Check, FileCheck2, FileSpreadsheet, FileText, Filter, History, Hourglass, Lock, UserX,
   PenLine, Send, ShieldCheck, UserCheck, X,
 } from 'lucide-react'
 import { memo, useMemo } from 'react'
@@ -14,7 +14,7 @@ export const TOOL_ICON: Record<string, typeof Send> = {
   'spreadsheet.read': FileSpreadsheet, 'data.filter': Filter, 'memory.exclude': History,
   'knowledge.retrieve': BookOpen, 'ai.draft': PenLine, 'data.summarize': BarChart3, 'ai.draft_report': FileText,
   'safety.check': ShieldCheck, 'approval.request': UserCheck, 'email.send': Send, 'memory.record': Bookmark,
-  'notify.summary': Bell,
+  'notify.summary': Bell, 'compliance.suppress': UserX, 'spreadsheet.update': FileCheck2,
 }
 
 type NodeData = { step: Step; index: number; status?: string; selected?: boolean; message?: string }

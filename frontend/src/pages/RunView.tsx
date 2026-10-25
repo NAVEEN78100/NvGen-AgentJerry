@@ -39,11 +39,18 @@ function StepOutput({ log, onPreview }: { log: RunLog; onPreview: (d: Draft[]) =
       )
     case 'memory.exclude':
       return o.skipped?.length ? (
-        <div>
-          <div className="text-[13px] text-ink-2 mb-2">Already handled in earlier runs:</div>
-          <div className="flex flex-wrap gap-1.5">{o.skipped.map((s: any) => <span key={s.key} title={s.key} className="h-6 px-2 rounded-md text-xs font-medium inline-flex items-center line-through decoration-1" style={{ background: BG.memory, color: HEX.memory }}>{s.name}</span>)}</div>
+        <div className="space-y-2">
+          {o.followups ? <div className="text-[13px] text-ink-2"><b className="text-ink">{o.followups}</b> due a follow-up (no reply yet).</div> : null}
+          <div className="text-[13px] text-ink-2">Skipped:</div>
+          <div className="flex flex-wrap gap-1.5">{o.skipped.map((s: any) => <span key={s.key} title={`${s.key}${s.reason ? ' — ' + s.reason : ''}`} className="h-6 px-2 rounded-md text-xs font-medium inline-flex items-center gap-1" style={{ background: BG.memory, color: HEX.memory }}><span className={s.reason?.startsWith('already') || !s.reason ? 'line-through decoration-1' : ''}>{s.name}</span>{s.reason && !s.reason.startsWith('already') && <span className="opacity-70">· {s.reason}</span>}</span>)}</div>
         </div>
       ) : <div className="text-[13px] text-ink-2">Memory holds {o.memory_size ?? 0} entries — no one here was handled before.</div>
+    case 'compliance.suppress':
+      return o.removed?.length ? (
+        <ul className="space-y-1 text-[13px]">{o.removed.map((x: any) => <li key={x.email}><b className="font-semibold">{x.name}</b> <span className="text-ink-2">— {x.reason}</span></li>)}</ul>
+      ) : <div className="text-[13px] text-ink-2">{o.list_size} people on the do-not-contact list; none of them are in this run.</div>
+    case 'spreadsheet.update':
+      return o.version ? <Link to="/data" className="text-[13px] font-semibold text-brand hover:underline">Open version {o.version} in Data files</Link> : null
     case 'knowledge.retrieve':
       return o.example ? (
         <div className="rounded-lg border border-line p-3 text-[13px]">
@@ -75,9 +82,9 @@ function StepOutput({ log, onPreview }: { log: RunLog; onPreview: (d: Draft[]) =
 
 function StepRow({ log, isLast, onPreview }: { log: RunLog; isLast: boolean; onPreview: (d: Draft[]) => void }) {
   const [open, setOpen] = useState(false)
-  const field = CATEGORY_FIELD[{ 'spreadsheet.read': 'data', 'data.filter': 'audience', 'memory.exclude': 'memory', 'memory.record': 'memory', 'knowledge.retrieve': 'knowledge', 'ai.draft': 'ai', 'data.summarize': 'ai', 'ai.draft_report': 'ai', 'safety.check': 'safety', 'approval.request': 'approval', 'email.send': 'action', 'notify.summary': 'output' }[log.tool] || 'ai']
+  const field = CATEGORY_FIELD[{ 'spreadsheet.read': 'data', 'data.filter': 'audience', 'memory.exclude': 'memory', 'memory.record': 'memory', 'knowledge.retrieve': 'knowledge', 'ai.draft': 'ai', 'data.summarize': 'ai', 'ai.draft_report': 'ai', 'safety.check': 'safety', 'approval.request': 'approval', 'email.send': 'action', 'notify.summary': 'output', 'compliance.suppress': 'safety', 'spreadsheet.update': 'data' }[log.tool] || 'ai']
   const Icon = TOOL_ICON[log.tool]
-  const hasOutput = ['passed', 'waiting'].includes(log.status) && Object.keys(log.output || {}).length > 0 && log.tool !== 'notify.summary' && log.tool !== 'memory.record'
+  const hasOutput = ['passed', 'waiting'].includes(log.status) && Object.keys(log.output || {}).length > 0 && log.tool !== 'notify.summary' && log.tool !== 'memory.record' && !(log.tool === 'spreadsheet.update' && !log.output?.version)
   useEffect(() => { if (log.status === 'waiting') setOpen(false) }, [log.status])
   const st = log.status
   return (

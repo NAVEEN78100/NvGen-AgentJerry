@@ -63,6 +63,6 @@ export interface Approval {
   items?: ApprovalItem[]
 }
 
-export interface DataFile { id: string; name: string; kind: string; columns: string[]; row_count: number; created_at: string; used_by?: string[]; rows?: Record<string, string>[] }
+export interface DataFile { id: string; name: string; kind: string; columns: string[]; row_count: number; created_at: string; version?: number; updated_at?: string | null; used_by?: string[]; rows?: Record<string, string>[] }
 export interface KnowledgeDoc { id: string; title: string; file_name: string; source_type: string; chunk_count: number; char_count: number; status: string; created_at: string }
 export interface Passage { chunk_id: number; source_id: string; source_title: string; section: string; text: string; score: number }
