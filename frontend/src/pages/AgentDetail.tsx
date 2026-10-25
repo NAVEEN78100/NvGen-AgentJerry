@@ -1,4 +1,6 @@
-import { ArrowLeft, Brain, FlaskConical, Pause, Pencil, Play, Radio, Trash2, UserCheck, X } from 'lucide-react'
+import { ArrowLeft, Brain, Copy, Download, FlaskConical, Lightbulb, Pause, Pencil, Play, Radio, Trash2, UserCheck, X } from 'lucide-react'
+import { Funnel, WeeklyBars } from './Insights'
+import { getToken } from '../lib/api'
 import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -21,7 +23,24 @@ export function AgentDetail() {
   const mem = useApi<Mem[]>(`/agents/${agentId}/memory`)
   const versions = useApi<{ version: number; steps: number; status: string; created_at: string; tested: boolean }[]>(`/agents/${agentId}/versions`)
   const [sp] = useSearchParams()
-  const [tab, setTab] = useState<'overview' | 'runs' | 'memory' | 'versions'>((sp.get('tab') as any) || 'overview')
+  const [tab, setTab] = useState<'overview' | 'insights' | 'runs' | 'memory' | 'versions'>((sp.get('tab') as any) || 'overview')
+  const ins = useApi<{ metrics: any; suggestions: { id: string; tone: string; title: string; body: string; refine: string | null }[] }>(tab === 'insights' ? `/agents/${agentId}/insights` : null)
+  const applySuggestion = async (text: string) => {
+    try { await api(`/studio/${agentId}/refine`, { body: { text } }); toast.success('Agent updated — run a test to try the new version'); nav(`/studio/${agentId}`) }
+    catch (e: any) { toast.error(e.message) }
+  }
+  const duplicate = async () => {
+    try { const r = await api(`/agents/${agentId}/duplicate`, { method: 'POST' }); toast.success(`Created ${r.name}`); nav(`/agents/${r.id}`) }
+    catch (e: any) { toast.error(e.message) }
+  }
+  const exportRecipe = async () => {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/export`, { headers: { Authorization: `Bearer ${getToken()}` } })
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob(); const a2 = document.createElement('a')
+      a2.href = URL.createObjectURL(blob); a2.download = (res.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1]) || 'agent.json'; a2.click()
+    } catch (e: any) { toast.error(e.message) }
+  }
   const [busy, setBusy] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -86,6 +105,7 @@ export function AgentDetail() {
       <div className="mt-6">
         <Tabs value={tab} onChange={setTab} items={[
           { value: 'overview', label: 'Overview' },
+          { value: 'insights', label: 'Insights' },
           { value: 'runs', label: 'Runs', count: runs.data?.length },
           { value: 'memory', label: 'Memory', count: mem.data?.length },
           { value: 'versions', label: 'Versions', count: versions.data?.length },
@@ -125,6 +145,36 @@ export function AgentDetail() {
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'insights' && (
+        !ins.data ? <Skeleton className="h-64" /> : (
+          <div className="space-y-6">
+            {!!ins.data.suggestions.length && (
+              <div className="grid gap-3 md:grid-cols-2">
+                {ins.data.suggestions.map(s => (
+                  <div key={s.id} className={`card p-4 border-l-4 ${s.tone === 'warn' ? 'border-l-f-trigger' : s.tone === 'good' ? 'border-l-f-action' : 'border-l-brand'}`}>
+                    <div className="flex items-start gap-2.5"><Lightbulb className="h-4 w-4 mt-0.5 text-ink-3 shrink-0" />
+                      <div className="min-w-0 flex-1"><div className="text-[14px] font-semibold">{s.title}</div><p className="text-[13px] text-ink-2 mt-0.5">{s.body}</p>
+                        {s.refine && <button className="mt-2.5 btn-secondary btn-sm" onClick={() => applySuggestion(s.refine!)}>Apply: “{s.refine}”</button>}
+                        {s.id === 'wins' && <Link to="/replies?category=interested" className="mt-2.5 btn-secondary btn-sm">Open replies</Link>}
+                      </div></div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+              {[['Sent', ins.data.metrics.sent, `${ins.data.metrics.followups_sent} were follow-ups`], ['Approved as written', ins.data.metrics.approval_rate == null ? '—' : `${Math.round(ins.data.metrics.approval_rate * 100)}%`, `${ins.data.metrics.edited} edited before sending`],
+                ['Reply rate', ins.data.metrics.reply_rate == null ? '—' : `${Math.round(ins.data.metrics.reply_rate * 100)}%`, `${ins.data.metrics.interested} interested`], ['Avg. approval wait', ins.data.metrics.avg_wait_hours == null ? '—' : `${ins.data.metrics.avg_wait_hours}h`, 'From drafts ready to decision']].map(([l, v, h]) => (
+                <div key={l as string} className="card p-4"><div className="text-[12.5px] font-semibold text-ink-2">{l}</div><div className="mt-1 font-display text-[28px] font-semibold tabular leading-none">{v}</div><div className="mt-2 text-xs text-ink-3">{h}</div></div>
+              ))}
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="card p-5"><h2 className="text-[15px] font-semibold mb-4">Funnel</h2><Funnel data={[{ stage: 'Drafts reviewed', value: ins.data.metrics.reviewed }, { stage: 'Approved', value: ins.data.metrics.approved }, { stage: 'Sent', value: ins.data.metrics.sent }, { stage: 'Replied', value: ins.data.metrics.replied }, { stage: 'Interested', value: ins.data.metrics.interested }]} /></div>
+              <div className="card p-5"><h2 className="text-[15px] font-semibold">Per week</h2><WeeklyBars weeks={ins.data.metrics.weeks} /></div>
+            </div>
+          </div>
+        )
       )}
 
       {tab === 'runs' && (
@@ -181,6 +231,11 @@ export function AgentDetail() {
                 </li>
               ))}
             </ul>
+          </div>
+          <div className="card p-5 flex flex-wrap items-center gap-3">
+            <div className="flex-1 min-w-[240px]"><div className="text-[14px] font-semibold">Copy or share</div><div className="text-[13px] text-ink-2">Duplicate it as a starting point, or export a recipe file a colleague can import into their workspace.</div></div>
+            <button className="btn-secondary" onClick={duplicate}><Copy className="h-4 w-4" />Duplicate</button>
+            <button className="btn-secondary" onClick={exportRecipe}><Download className="h-4 w-4" />Export recipe</button>
           </div>
           <div className="card p-5 flex flex-wrap items-center gap-3">
             <div className="flex-1 min-w-[240px]"><div className="text-[14px] font-semibold">Delete this agent</div><div className="text-[13px] text-ink-2">Removes its schedule, memory and pending approvals. Sent emails stay in the outbox.</div></div>

@@ -240,6 +240,17 @@ def _finish_failed(execution_id: str, step: dict, index: int, steps: list[dict],
         ex.status = "failed"
         ex.error = f"{step['label']}: {msg}"
         ex.finished_at = _now()
+        if ex.mode == "live":
+            agent.failure_streak = (agent.failure_streak or 0) + 1
+            if agent.failure_streak >= 3 and agent.status == "deployed":
+                agent.status = "paused"
+                from .scheduler import sync as _sync
+                _sync(agent)
+                notify(db, ex.org_id, "run_failed", f"{agent.name} was paused",
+                       "It failed 3 live runs in a row, so Jerry paused it to protect your contacts. Fix the issue and resume.",
+                       f"/agents/{agent.id}")
+                audit(db, ex.org_id, "AgentJerry", "agent.auto_paused", "agent", agent.id,
+                      "Paused automatically after 3 failed live runs in a row")
         ex.summary = {**(ex.summary or {}), "headline": f"Stopped at “{step['label']}”", "test": ex.mode == "test"}
         notify(db, ex.org_id, "run_failed", f"{agent.name} stopped", f"{step['label']}: {msg}",
                f"/agents/{agent.id}/runs/{ex.id}")
@@ -263,6 +274,7 @@ def _finish_completed(execution_id: str, data: dict) -> None:
                 if agent.status in ("ready", "draft"):
                     agent.status = "tested"
         else:
+            agent.failure_streak = 0
             if s.get("sent"):
                 db.add(Metric(org_id=ex.org_id, agent_id=agent.id, name="items_processed", value=s["sent"]))
         notify(db, ex.org_id, "run_completed", f"{agent.name}: {'test passed' if ex.mode == 'test' else 'run finished'}",

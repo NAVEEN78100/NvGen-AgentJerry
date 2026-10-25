@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, LayoutGrid, LogOut, MailOpen, Menu, Play, Plus, Users,
+  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, BarChart3, LayoutGrid, LogOut, MailOpen, Menu, Play, Plus, Users,
   Send, Settings, X, XCircle,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -52,6 +52,7 @@ function Sidebar({ pending, replies, onNavigate }: { pending: number; replies: n
         <NavItem to="/approvals" icon={<Inbox className={i} />} label="Approvals" badge={pending} />
         <NavItem to="/replies" icon={<MailOpen className={i} />} label="Replies" badge={replies} tone="soft" />
         <NavItem to="/runs" icon={<Play className={i} />} label="Runs" />
+        <NavItem to="/insights" icon={<BarChart3 className={i} />} label="Insights" />
       </nav>
       <div className="mt-6 px-5 text-2xs font-semibold text-ink-3">Workspace</div>
       <nav className="mt-1.5 px-3 space-y-0.5" aria-label="Workspace">

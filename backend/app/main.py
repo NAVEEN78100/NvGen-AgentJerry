@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from . import config
 from .api.routes import router
 from .api.team import router as team_router
+from .api.insights import router as insights_router
 from .db import Base, engine
 from .runtime import scheduler
 
@@ -35,6 +36,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(router)
 app.include_router(team_router)
+app.include_router(insights_router)
 
 
 @app.get("/api/health")

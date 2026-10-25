@@ -14,6 +14,7 @@ import { Login } from './pages/Login'
 import { Outbox } from './pages/Outbox'
 import { Replies } from './pages/Replies'
 import { Team } from './pages/Team'
+import { Insights } from './pages/Insights'
 import { RunView } from './pages/RunView'
 import { Runs } from './pages/Runs'
 import { SettingsPage } from './pages/Settings'
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="outbox" element={<Outbox />} />
         <Route path="replies" element={<Replies />} />
         <Route path="team" element={<Team />} />
+        <Route path="insights" element={<Insights />} />
         <Route path="activity" element={<Activity />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

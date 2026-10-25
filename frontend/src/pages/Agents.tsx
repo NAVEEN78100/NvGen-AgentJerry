@@ -1,4 +1,8 @@
-import { Bot, FileSpreadsheet, Plus, Radio, ShieldCheck } from 'lucide-react'
+import { Bot, FileSpreadsheet, Plus, Radio, ShieldCheck, Upload } from 'lucide-react'
+import { useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { api } from '../lib/api'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AgentStatusPill, DeptTag, EmptyState, ErrorNote, PageHeader, RunStatusPill, Skeleton, Tabs } from '../components/ui'
@@ -9,12 +13,25 @@ import type { AgentBrief } from '../lib/types'
 export function Agents() {
   const list = useApi<AgentBrief[]>('/agents', { poll: 10000 })
   const [tab, setTab] = useState<'all' | 'live' | 'building'>('all')
+  const fileRef = useRef<HTMLInputElement>(null)
+  const nav = useNavigate()
+  const importRecipe = async (f: File) => {
+    try {
+      const recipe = JSON.parse(await f.text())
+      const r = await api('/agents/import', { body: { recipe } })
+      toast.success(`Imported ${r.name}`)
+      nav(r.status === 'draft' ? `/studio/${r.id}` : `/agents/${r.id}`)
+    } catch (e: any) { toast.error(e instanceof SyntaxError ? 'That file isn’t valid JSON.' : e.message) }
+  }
   const all = list.data || []
   const shown = all.filter(a => tab === 'all' || (tab === 'live' ? ['deployed', 'paused'].includes(a.status) : ['draft', 'ready', 'tested'].includes(a.status)))
   return (
     <div>
       <PageHeader title="Agents" subtitle="Every agent was described in plain words, tested safely, and only then taken live."
-        actions={<Link to="/studio" className="btn-primary"><Plus className="h-4 w-4" />Create agent</Link>} />
+        actions={<>
+          <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={e => { e.target.files?.[0] && importRecipe(e.target.files[0]); e.target.value = '' }} />
+          <button className="btn-secondary" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" />Import recipe</button>
+          <Link to="/studio" className="btn-primary"><Plus className="h-4 w-4" />Create agent</Link></>} />
       <Tabs value={tab} onChange={setTab} items={[
         { value: 'all', label: 'All', count: all.length },
         { value: 'live', label: 'Live & paused', count: all.filter(a => ['deployed', 'paused'].includes(a.status)).length },
