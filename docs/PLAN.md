@@ -132,15 +132,22 @@ Safety policy, email delivery, AI engine status, tool catalogue, reset demo work
 
 | Module | Why it matters | Priority |
 |---|---|---|
-| **Agent templates gallery** (seeded: sales, finance, HR, report) ✅ | Users start from a working example rather than a blank page | Done |
+| **Agent templates gallery** (6 examples, including a sequence and an event trigger) ✅ | Users start from a working example rather than a blank page | Done |
 | **Version history** ✅ | Each rebuild is a new version; only tested versions go live | Done |
-| **Write-back step** (update the spreadsheet status after sending) | Closes the loop, so the source of truth stays correct | High |
-| **Reply tracking** (Gmail/Outlook inbox read) | "Follow up again if no reply in 5 days" is the next most common request | High |
-| **Approver routing** (manager approves, not the author) | Separation of duties for finance and HR | High |
+| **Spreadsheet write-back + file versions** ✅ | "Mark them as contacted" keeps the sheet the source of truth; every change is a downloadable version | Done |
+| **Replies inbox + intent sorting + suggested responses** ✅ | Replies stop sequences, unsubscribes go to the do-not-contact list, interested leads get a grounded draft answer | Done (sandbox replies + inbound webhook) |
+| **Follow-up sequences** ✅ | "If no reply in 3 days, follow up again, up to 3 times" with "Re:" threading and a stop-on-reply rule | Done |
+| **Do-not-contact list** ✅ | Compliance: checked before drafting *and* at send time | Done |
+| **Event trigger: when the spreadsheet is updated** ✅ | Runs on each new upload (never on the agent's own write-back, so no loops) | Done |
+| **Team + approver routing + four-eyes rule** ✅ | Separation of duties for finance and HR | Done |
+| **Insights + suggestions** ✅ | Approval, edit and reply rates, funnel, weekly trend; one-click fixes | Done |
+| **Health guard** ✅ | Auto-pause after 3 failed live runs in a row | Done |
+| **Recipes: duplicate / export / import** ✅ | Share a working agent with a colleague or another workspace | Done |
+| **Evaluation harness** ✅ | Tuning set (40) + held-out set (20); 97% field accuracy on unseen phrasing | Done |
+| **Command palette + onboarding checklist** ✅ | Faster navigation; first-time users see the next step | Done |
+| **Real inbox connectors** (Gmail/Outlook OAuth) | Replace sandbox replies with live mailbox reading | Next |
 | **Proactive suggestions** ("You send this every Monday, want an agent?") | From the document's future scope; needs email/calendar connectors | Medium |
-| **Run analytics** (approval rate, edit rate per agent) | A high edit rate means the prompt or template needs tuning; this feeds the improvement dataset | Medium |
 | **Slack/WhatsApp notifications and approvals** | Approving from a phone | Medium |
-| **Evaluation harness** (labelled instruction → expected requirement) | The document's dataset section: regression-tests the understanding engine | Medium |
 | **Multi-agent handoff** (report agent triggers follow-up agent) | Future scope | Later |
 
 ## 5. Roadmap
@@ -150,13 +157,16 @@ Safety policy, email delivery, AI engine status, tool catalogue, reset demo work
 | 1. Core loop | Studio, clarify, plan, validate, test, approve, send, memory, audit | ✅ |
 | 2. Knowledge + safety | RAG with citations, content checks, policy, version gate | ✅ |
 | 3. Product polish | Dashboard, notifications, mobile layout, keyboard review, empty/error states | ✅ |
-| 4. Real integrations | Gmail/Outlook OAuth send, Google Sheets read/write, reply tracking | ⬜ next |
-| 5. Team features | Invites, approver routing, roles, SSO | ⬜ |
+| 3b. Closing the loop | Replies, sequences, do-not-contact, write-back, file versions, event trigger | ✅ |
+| 3c. Team & quality | Team, approver routing, four-eyes, insights, health guard, recipes, evaluation | ✅ |
+| 4. Real integrations | Gmail/Outlook OAuth send + inbox, Google Sheets read/write | ⬜ next |
+| 5. Team features | Email invites, SSO, granular roles | ⬜ |
 | 6. Scale | PostgreSQL + pgvector, Celery workers, rate limits, observability | ⬜ |
 | 7. Intelligence | Evaluation set, proactive suggestions, analytics-driven tuning | ⬜ |
 
 ## 6. Known limitations (be upfront in reviews)
-- The offline engine understands the common patterns (follow-ups, reminders, invitations, reports). Open-ended requests need the Claude engine.
+- The offline engine understands the common patterns (follow-ups, reminders, invitations, reports, sequences, write-back, event triggers). It scores 97% field accuracy on the held-out set; the known misses are listed on the Engine quality page. Open-ended requests need the Claude engine.
+- Replies are recorded in the sandbox ("Simulate a reply") or through the inbound-email webhook. A live Gmail/Outlook mailbox connector isn't built yet.
 - SMTP delivery and real-time schedule firing are implemented but were not observed end to end in this build.
 - Secrets (SMTP password) are stored in the database for the demo. Production should use a secret manager.
 - No dark mode yet.

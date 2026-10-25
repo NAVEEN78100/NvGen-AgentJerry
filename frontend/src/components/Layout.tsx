@@ -1,12 +1,13 @@
 import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, BarChart3, Gauge, LayoutGrid, LogOut, MailOpen, Menu, Play, Plus, Users,
+  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, BarChart3, Gauge, LayoutGrid, Search, LogOut, MailOpen, Menu, Play, Plus, Users,
   Send, Settings, X, XCircle,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { CommandPalette, useCommandPalette } from './CommandPalette'
 import { useAuth } from '../lib/auth'
 import { timeAgo } from '../lib/format'
 import { useApi } from '../lib/hooks'
@@ -147,6 +148,7 @@ export function EngineBadge() {
 
 export function Layout() {
   const [drawer, setDrawer] = useState(false)
+  const palette = useCommandPalette()
   const loc = useLocation()
   const notes = useApi<Counts>('/notifications', { poll: 5000 })
   const approvals = useApi<any[]>('/approvals?status=pending&mine=true', { poll: 5000 })
@@ -177,9 +179,14 @@ export function Layout() {
         <button className="lg:hidden btn-ghost !px-2" onClick={() => setDrawer(true)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
         <div className="lg:hidden"><Logo /></div>
         <div className="flex-1" />
+        <button onClick={() => palette.setOpen(true)} className="hidden md:flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-lg border border-line bg-surface text-[13px] text-ink-3 hover:border-line-strong w-[260px]" aria-label="Open command palette">
+          <Search className="h-3.5 w-3.5" /><span className="flex-1 text-left">Search or describe a task…</span><span className="kbd">Ctrl K</span>
+        </button>
+        <button onClick={() => palette.setOpen(true)} className="md:hidden btn-ghost !px-2" aria-label="Search"><Search className="h-[18px] w-[18px]" /></button>
         <EngineBadge />
         <Notifications data={notes.data} reload={notes.reload} />
       </header>
+      <CommandPalette open={palette.open} onClose={() => palette.setOpen(false)} />
       <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-[1320px]">
         <Outlet />
       </main>

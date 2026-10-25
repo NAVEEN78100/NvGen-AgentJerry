@@ -15,6 +15,20 @@ From that one sentence, AgentJerry:
 7. **Sends** exactly once per person (idempotent), **remembers** who was emailed, and skips them next week.
 8. **Logs** every decision in an audit trail.
 
+It also covers the work around the core loop:
+
+- **Replies inbox.** Replies are sorted by intent (interested, question, not now, not interested, unsubscribe, out of office), and each comes with a suggested response grounded in your documents.
+- **Follow-up sequences.** Asking for "If they don't reply in 3 days, follow up again" gives you a polite second and third email that stop the moment someone replies.
+- **Do-not-contact list.** It's checked before drafting and again at send time. Unsubscribe replies are added automatically.
+- **Spreadsheet write-back.** "Mark them as contacted" updates the sheet as a new, downloadable version; nothing is overwritten.
+- **Event trigger.** "Whenever the sheet is updated" runs the agent when you upload a new version.
+- **Team & approver routing.** A builder and an approver can be different people, with an optional four-eyes rule.
+- **Insights.** A funnel, a weekly trend and per-agent rates, plus suggestions you can apply in one click.
+- **Health guard.** An agent is auto-paused after 3 failed live runs in a row.
+- **Recipes.** Duplicate an agent, or export/import it as a portable recipe.
+- **Engine quality.** A labelled tuning set and a held-out set, with field-level accuracy shown in the app and enforced as a test.
+- **Command palette** (Ctrl+K) and a getting-started checklist.
+
 ## Quick start
 
 **Windows:** double-click `run.bat`. **macOS/Linux:** `./run.sh`.
@@ -77,7 +91,7 @@ SQLite (default) / PostgreSQL · BM25 knowledge index · APScheduler · Sandbox 
 cd backend && python -m pytest -q
 ```
 
-9 end-to-end tests run through the real API, covering:
+15 end-to-end tests run through the real API, covering:
 
 - the full Section 11 scenario (20 leads → 15 new → approve 12 / reject 3 → 12 sent → the next run skips those 12)
 - an attempted approval-gate bypass, which is blocked even when the stored workflow is tampered with
@@ -87,6 +101,12 @@ cd backend && python -m pytest -q
 - file uploads
 - PDF knowledge retrieval
 - auth
+- replies and the follow-up sequence (reply stops it, unsubscribe blocks it, a follow-up goes out 4 days later as "Re:")
+- spreadsheet write-back and versions
+- the file-updated trigger
+- approver routing and the four-eyes rule
+- insights, recipes and auto-pause
+- the engine-quality regression (≥ 97% field accuracy)
 
 ## Configuration
 

@@ -46,7 +46,22 @@ Go back to the agent → **Run now** again. Open **Skip leads already contacted*
 
 Show the **Memory** tab with **Forget**.
 
-## 7. Trust & audit (1 min)
+## 7. Replies close the loop (1.5 min)
+- **Outbox** → open any sent email → **Simulate a reply** → choose *Interested*. Repeat on two others with *Question* and *Unsubscribe*.
+- **Replies**: each one is sorted by intent.
+  - The question gets a suggested answer taken from the product brief. Edit it and press **Send response**.
+  - The unsubscribe is already on the **do-not-contact list** (Settings).
+- Anyone who replied is never followed up again.
+
+*Optional:* start from the example **Follow-up sequence that stops on reply**. After the live run, **Data files** shows `sales_leads.csv` at **version 2**, with the 15 leads marked "Contacted" and dated. The original version is still downloadable.
+
+## 8. Team, insights, quality (1 min)
+- **Team**: Arun (finance) built the invoice agent; Priya approves it. Signed in as Arun, the approval is read-only: "assigned to Priya".
+- **Insights**: the funnel (reviewed → approved → sent → replied → interested), per-agent rates, and suggestions you can apply with one click.
+- **Engine quality**: 97% field accuracy on 20 instructions the engine had never seen; the two misses are shown openly.
+- Press **Ctrl+K** anywhere: jump to pages and agents, or type a task to build it.
+
+## 9. Trust & audit (1 min)
 - **Approvals**: open the finance batch and show a payment reminder grounded in the late-fee policy.
 - **Activity log**: who built, tested, approved and sent what, and when.
 - **Settings**: safety policy toggles, sandbox vs SMTP, tool catalogue (sensitive tools marked with a lock), AI engine (offline now, Claude with one env var).
@@ -55,4 +70,5 @@ Show the **Memory** tab with **Forget**.
 - **"Is it just templates?"** The understanding, checklist, planner and validator are generic. With an API key, Claude writes the drafts; the offline engine covers the demo without internet. Either way, the AI only proposes and deterministic code validates and executes.
 - **"What stops it sending something bad?"** Three layers: validator (no send step without an approval gate), content safety check, and `email.send` refusing anything not approved in the database. A test tampers with a workflow to bypass approval, and it is blocked.
 - **"Retries / duplicates?"** Every email has an idempotency key, and memory records only what was actually sent.
-- **"How is it tested?"** `pytest` runs the design document's Section 11 scenario end to end (9 tests).
+- **"How is it tested?"** `pytest` runs the design document's Section 11 scenario end to end. 15 tests cover sequences, replies, write-back, team routing, insights and the engine-quality regression. The Engine quality page shows accuracy on held-out instructions.
+- **"Does it spam people?"** No. It enforces a do-not-contact list, stops sequences on any reply, caps emails per run, requires approval, and auto-pauses after repeated failures.

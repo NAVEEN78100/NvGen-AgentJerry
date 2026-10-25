@@ -248,6 +248,11 @@ export function Studio() {
     api<Agent>(`/agents/${agentId}`).then(a => { setAgent(a); setPhase('ready'); setFreshIds(a.conversation.length) }).catch(e => setError(e.message))
   }, [agentId]) // eslint-disable-line
 
+  useEffect(() => {
+    const p = (loc.state as any)?.prompt
+    if (p && !agentId) { setPrompt(p); setPhase('idle'); setAgent(null) }
+  }, [loc.key]) // eslint-disable-line
+
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [agent?.conversation.length])
 
   const withMinDelay = async <T,>(p: Promise<T>, ms = 1500) => {

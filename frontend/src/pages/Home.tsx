@@ -13,6 +13,37 @@ interface Dash {
   days: { date: string; test: number; live: number }[]
   pending: Approval[]; recent_runs: RunBrief[]; agents: AgentBrief[]
   activity: { id: number; actor: string; action: string; detail: string; at: string }[]
+  onboarding: { id: string; label: string; hint: string; done: boolean; link: string }[]
+}
+
+function Onboarding({ steps }: { steps: Dash['onboarding'] }) {
+  const KEY = 'agentjerry.onboarding.hidden'
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(KEY) === '1' } catch { return false } })
+  const done = steps.filter(s => s.done).length
+  if (hidden || done === steps.length) return null
+  const next = steps.find(s => !s.done)
+  return (
+    <div className="card p-5 mb-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[220px]">
+          <h2 className="text-[15px] font-semibold">Getting started · {done} of {steps.length} done</h2>
+          <div className="mt-2 h-1.5 rounded-full bg-paper overflow-hidden max-w-[360px]"><motion.div className="h-full bg-f-action rounded-full" initial={{ width: 0 }} animate={{ width: `${(done / steps.length) * 100}%` }} /></div>
+        </div>
+        {next && <Link to={next.link} className="btn-primary btn-sm">Next: {next.label}<ArrowRight className="h-3.5 w-3.5" /></Link>}
+        <button className="btn-ghost btn-sm" onClick={() => { setHidden(true); try { localStorage.setItem(KEY, '1') } catch { /* ignore */ } }}>Hide</button>
+      </div>
+      <ol className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {steps.map((s, i) => (
+          <li key={s.id}>
+            <Link to={s.link} className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${s.done ? 'border-line bg-paper/60' : 'border-line hover:border-line-strong'}`}>
+              <span className={`h-6 w-6 rounded-full grid place-items-center shrink-0 text-xs font-bold ${s.done ? 'bg-f-action text-white' : 'border-2 border-line-strong text-ink-3'}`}>{s.done ? '✓' : i + 1}</span>
+              <span className="min-w-0"><span className={`block text-[13.5px] font-semibold ${s.done ? 'text-ink-2 line-through decoration-ink-3/50' : ''}`}>{s.label}</span><span className="block text-xs text-ink-3">{s.hint}</span></span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
 }
 
 const LIVE = '#3B4FB8'
@@ -93,6 +124,8 @@ export function Home() {
           <button className="btn-primary h-9">Build</button>
         </form>
       </div>
+
+      {d.data?.onboarding && <Onboarding steps={d.data.onboarding} />}
 
       {!!d.data?.pending.length && (
         <div className="mb-6 space-y-2">

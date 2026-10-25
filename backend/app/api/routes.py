@@ -107,7 +107,22 @@ def dashboard(user: User = Depends(current_user), db: Session = Depends(get_db))
         "agents": [S.agent_brief(a) for a in sorted(agents, key=lambda a: a.updated_at, reverse=True)[:6]],
         "activity": [_event(e) for e in activity],
         "engine": llm.status(),
+        "onboarding": _onboarding(db, org_id),
     }
+
+
+def _onboarding(db: Session, org_id: str) -> list[dict[str, Any]]:
+    from ..models import Reply
+    def n(model, *conds):
+        return db.scalar(select(func.count()).select_from(model).where(*conds)) or 0
+    return [
+        {"id": "data", "label": "Add a spreadsheet", "hint": "Leads, invoices or candidates", "done": n(DataFile, DataFile.org_id == org_id) > 0, "link": "/data"},
+        {"id": "knowledge", "label": "Add company knowledge", "hint": "So emails use your real facts", "done": n(KnowledgeSource, KnowledgeSource.org_id == org_id) > 0, "link": "/knowledge"},
+        {"id": "agent", "label": "Describe a task to build an agent", "hint": "One sentence is enough", "done": n(Agent, Agent.org_id == org_id) > 0, "link": "/studio"},
+        {"id": "test", "label": "Run a safe test", "hint": "Real data, nothing sent", "done": n(Execution, Execution.org_id == org_id, Execution.mode == "test", Execution.status == "completed") > 0, "link": "/agents"},
+        {"id": "send", "label": "Approve and send", "hint": "You review every draft", "done": n(OutboxMessage, OutboxMessage.org_id == org_id) > 0, "link": "/approvals"},
+        {"id": "reply", "label": "Handle a reply", "hint": "Sorted by intent, with a suggested answer", "done": n(Reply, Reply.org_id == org_id) > 0, "link": "/replies"},
+    ]
 
 
 def _event(e: AuditEvent) -> dict[str, Any]:

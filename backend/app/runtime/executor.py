@@ -395,7 +395,13 @@ def h_filter(c: StepCtx) -> dict:
 
     kept = [r for r in rows if keep(r)]
     removed = len(rows) - len(kept)
-    return {"message": f"{len(kept)} of {len(rows)} {c.ent['plural']} match ({c.params.get('label')}).",
+    extra = sum(1 for r in kept if r.get("_needs_memory"))
+    if extra:
+        msg = (f"{len(kept) - extra} {c.params.get('value')} {c.ent['plural']}, plus {extra} marked "
+               f"“{(c.params.get('or_values') or [''])[0]}” to check for follow-ups.")
+    else:
+        msg = f"{len(kept)} of {len(rows)} {c.ent['plural']} match ({c.params.get('label')})."
+    return {"message": msg,
             "output": {"kept": len(kept), "removed": removed, "rule": c.params.get("label"),
                        "sample": [c.row_name(r) for r in kept[:8]]},
             "data": {"rows": kept, "_matched": len(kept)}}
