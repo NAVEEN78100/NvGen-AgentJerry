@@ -30,9 +30,10 @@ export function Approvals() {
                 {tab === 'pending' ? `Waiting since ${timeAgo(a.created_at)}` : a.status === 'expired' ? 'Expired — the run was cancelled' : `${a.decided_by} decided ${dateTime(a.decided_at)}`}
                 {tab === 'decided' && a.status !== 'expired' && ` · ${a.counts.approved} approved, ${a.counts.rejected} rejected`}
                 {tab === 'pending' && !!a.counts.flagged && ` · ${a.counts.flagged} flagged`}
+                {tab === 'pending' && a.assigned_to && ` · ${a.can_decide ? 'assigned to you' : `waiting for ${a.assigned_to.name}`}`}
               </div>
             </div>
-            <span className={tab === 'pending' ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'}>{tab === 'pending' ? 'Review' : 'View'}<ArrowRight className="h-3.5 w-3.5" /></span>
+            <span className={tab === 'pending' && a.can_decide ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'}>{tab === 'pending' && a.can_decide ? 'Review' : 'View'}<ArrowRight className="h-3.5 w-3.5" /></span>
           </Link>
         ))}
       </div>

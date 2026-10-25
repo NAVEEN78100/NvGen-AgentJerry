@@ -653,7 +653,8 @@ def h_approval(c: StepCtx) -> dict:
             ap = Approval(execution_id=c.execution_id, agent_id=c.agent.id, org_id=c.agent.org_id,
                           step_id=c.step["id"], action=c.params.get("action", "email.send"),
                           title=f"{len(drafts)} {c.req.get('message', {}).get('noun', 'emails')} from “{c.agent.name}”",
-                          reason=c.req.get("approval", {}).get("reason", ""))
+                          reason=c.req.get("approval", {}).get("reason", ""),
+                          assigned_to=c.agent.approver_id or c.agent.user_id)
             for i, d in enumerate(drafts):
                 blocked = any(f["level"] == "error" for f in d.get("flags", []))
                 ap.items.append(ApprovalItem(idx=i, ref_key=d["key"] or d["to"], payload=d, flags=d.get("flags", []),
@@ -662,7 +663,7 @@ def h_approval(c: StepCtx) -> dict:
             db.add(ap)
             db.flush()
             notify(db, c.agent.org_id, "approval", f"{len(drafts)} drafts need your approval",
-                   f"“{c.agent.name}” is waiting for you.", f"/approvals/{ap.id}")
+                   f"“{c.agent.name}” is waiting for you.", f"/approvals/{ap.id}", user_id=ap.assigned_to)
             audit(db, c.agent.org_id, "AgentJerry", "approval.requested", "approval", ap.id,
                   f"{len(drafts)} drafts awaiting approval", agent_id=c.agent.id)
     raise WaitForApproval(f"Waiting for your approval of {len(drafts)} drafts.")
@@ -786,6 +787,20 @@ HANDLERS: dict[str, Callable[[StepCtx], dict]] = {
 assert set(HANDLERS) == set(TOOLS), "every registered tool needs a handler"
 
 
+def approval_permission(db, ap: Approval, user: User) -> str | None:
+    """Who may decide: the assigned approver or an admin. With the four-eyes
+    policy, the agent's author can never approve its own external emails."""
+    agent = db.get(Agent, ap.agent_id)
+    org = db.get(Organization, ap.org_id)
+    policy = (org.settings or {}).get("policy", {})
+    if policy.get("four_eyes") and agent and agent.user_id == user.id:
+        return "Your workspace requires a second person to approve emails from agents you built."
+    if ap.assigned_to and ap.assigned_to != user.id and user.role != "admin":
+        approver = db.get(User, ap.assigned_to)
+        return f"This approval is assigned to {approver.name if approver else 'someone else'}."
+    return None
+
+
 def decide(approval_id: str, user: User, decisions: list[dict[str, Any]], org_id: str) -> Approval:
     """Record per-item decisions (with optional edits) and resume the run."""
     with session_scope() as db:
@@ -794,6 +809,9 @@ def decide(approval_id: str, user: User, decisions: list[dict[str, Any]], org_id
             raise RunError("Approval not found.")
         if ap.status != "pending":
             raise RunError("This approval was already decided.")
+        problem = approval_permission(db, ap, user)
+        if problem:
+            raise RunError(problem)
         by_id = {it.id: it for it in ap.items}
         for d in decisions:
             it = by_id.get(int(d["id"]))

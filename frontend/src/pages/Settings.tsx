@@ -9,7 +9,7 @@ import { useApi } from '../lib/hooks'
 
 type S = {
   org: { name: string }; is_admin: boolean
-  policy: { require_approval_external: boolean; require_approval_internal: boolean; max_emails_per_run: number }
+  policy: { require_approval_external: boolean; require_approval_internal: boolean; max_emails_per_run: number; four_eyes: boolean }
   smtp: { enabled?: boolean; host?: string; port?: number; username?: string; password?: string; from_email?: string; from_name?: string }
   engine: { provider: string; model: string | null; enabled: boolean }
   inbound_key: string | null
@@ -60,6 +60,10 @@ export function SettingsPage() {
           <div className="flex items-start gap-4 py-3">
             <div className="flex-1"><div className="text-[14px] font-semibold">Approve internal emails too</div><div className="text-[13px] text-ink-2">Also require approval for reports and emails to colleagues at your own domain.</div></div>
             <Toggle label="Approve internal emails" checked={d.policy.require_approval_internal} disabled={!admin || saving} onChange={v => patch({ policy: { require_approval_internal: v } }, 'Policy updated')} />
+          </div>
+          <div className="flex items-start gap-4 py-3">
+            <div className="flex-1"><div className="text-[14px] font-semibold">Four-eyes approval</div><div className="text-[13px] text-ink-2">The person who built an agent can’t approve its emails — a second person must. Set each agent’s approver on its page.</div></div>
+            <Toggle label="Four-eyes approval" checked={!!d.policy.four_eyes} disabled={!admin || saving} onChange={v => patch({ policy: { four_eyes: v } }, v ? 'A second person must now approve' : 'Four-eyes rule turned off')} />
           </div>
           <div className="flex items-center gap-4 py-3">
             <div className="flex-1"><div className="text-[14px] font-semibold">Most emails per run</div><div className="text-[13px] text-ink-2">A run never drafts more than this. The rest are picked up on the next run.</div></div>

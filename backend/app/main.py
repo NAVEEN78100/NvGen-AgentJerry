@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .api.routes import router
+from .api.team import router as team_router
 from .db import Base, engine
 from .runtime import scheduler
 
@@ -33,6 +34,7 @@ app = FastAPI(title="AgentJerry API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(router)
+app.include_router(team_router)
 
 
 @app.get("/api/health")

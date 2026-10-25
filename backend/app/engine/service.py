@@ -22,7 +22,8 @@ def _now() -> str:
 
 
 def default_policy(org: Organization) -> dict[str, Any]:
-    p = {"require_approval_external": True, "require_approval_internal": False, "max_emails_per_run": 50}
+    p = {"require_approval_external": True, "require_approval_internal": False, "max_emails_per_run": 50,
+         "four_eyes": False}
     p.update((org.settings or {}).get("policy", {}))
     return p
 

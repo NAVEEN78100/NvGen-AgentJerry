@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, FlaskConical, Pause, Pencil, Play, Radio, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Brain, FlaskConical, Pause, Pencil, Play, Radio, Trash2, UserCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -63,11 +63,13 @@ export function AgentDetail() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3"><h1 className="text-[28px] font-semibold leading-tight">{a.name}</h1><AgentStatusPill status={a.status} /></div>
           <p className="mt-1.5 text-ink-2 max-w-[78ch]">{a.goal}</p>
+          <div className="flex flex-wrap items-center gap-x-5"><ApproverPicker agent={a} onChange={n => ag.setData(n)} />
           <p className="mt-2 text-[13px] text-ink-2 flex items-center gap-1.5">
             <Radio className="h-3.5 w-3.5 text-f-trigger" />
             {live && a.next_run ? <>Next run <b className="text-ink font-semibold">{untilLabel(a.next_run)}</b></> : a.trigger_label}
             {a.status === 'paused' && <span className="text-ink-3">· schedule is off</span>}
           </p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link to={`/studio/${a.id}`} className="btn-ghost"><Pencil className="h-4 w-4" />Edit</Link>
@@ -196,5 +198,22 @@ export function AgentDetail() {
         <p className="text-[14px]">The next run will treat everyone as new — people who were already emailed could be emailed again.</p>
       </Modal>
     </div>
+  )
+}
+
+function ApproverPicker({ agent, onChange }: { agent: Agent; onChange: (a: Agent) => void }) {
+  const team = useApi<{ id: string; name: string; title: string }[]>('/team')
+  if (!agent.approval_required || !team.data) return null
+  const set = async (id: string) => {
+    try { const n = await api<Agent>(`/agents/${agent.id}`, { method: 'PATCH', body: { approver_id: id } }); onChange(n); toast.success(`${team.data?.find(t => t.id === id)?.name} now approves this agent`) }
+    catch (e: any) { toast.error(e.message) }
+  }
+  return (
+    <label className="mt-2 inline-flex items-center gap-2 text-[13px] text-ink-2">
+      <UserCheck className="h-3.5 w-3.5 text-f-approval" />Approved by
+      <select className="h-8 rounded-lg border border-line-strong bg-surface px-2 text-[13px] font-semibold text-ink" value={agent.approver_id} onChange={e => set(e.target.value)} aria-label="Approver">
+        {team.data.map(m => <option key={m.id} value={m.id}>{m.name}{m.id === agent.owner_id ? ' (built it)' : ''}</option>)}
+      </select>
+    </label>
   )
 }

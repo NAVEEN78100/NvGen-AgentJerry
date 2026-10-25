@@ -40,7 +40,7 @@ export interface AgentBrief {
   id: string; name: string; goal: string; status: AgentStatus; department: string; trigger: Record<string, any>
   trigger_label: string; next_run: string | null; pattern: string | null; purpose: string | null
   source_file: string | null; approval_required: boolean | null; created_at: string; updated_at: string
-  deployed_at: string | null; engine: string
+  deployed_at: string | null; engine: string; approver_id?: string; owner_id?: string
   stats: { live_runs?: number; emails_sent?: number; memory?: number; pending_approvals?: number; last_run?: RunBrief | null }
 }
 export interface Agent extends AgentBrief {
@@ -60,6 +60,7 @@ export interface Approval {
   id: string; execution_id: string; agent_id: string; agent_name: string | null; action: string; title: string
   reason: string; status: string; decided_by: string | null; decided_at: string | null; created_at: string
   counts: { total: number; approved: number; rejected: number; pending: number; flagged: number }
+  assigned_to: { id: string; name: string } | null; can_decide: boolean; blocked_reason: string | null
   items?: ApprovalItem[]
 }
 

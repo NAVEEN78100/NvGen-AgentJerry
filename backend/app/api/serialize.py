@@ -31,7 +31,7 @@ def agent_brief(a: Agent, stats: dict | None = None) -> dict[str, Any]:
         "source_file": (spec.get("source") or {}).get("file_name"),
         "approval_required": (spec.get("approval") or {}).get("required"),
         "created_at": iso(a.created_at), "updated_at": iso(a.updated_at), "deployed_at": iso(a.deployed_at),
-        "engine": a.engine, "stats": stats or {},
+        "engine": a.engine, "stats": stats or {}, "approver_id": a.approver_id or a.user_id, "owner_id": a.user_id,
     }
 
 
@@ -77,11 +77,13 @@ def execution_out(e: Execution, agent_name: str | None = None, logs: list[Execut
 
 
 def approval_out(ap: Approval, agent_name: str | None = None, with_items: bool = True,
-                 decided_by_name: str | None = None) -> dict[str, Any]:
+                 decided_by_name: str | None = None, assignee: dict | None = None, can_decide: bool = True,
+                 blocked_reason: str | None = None) -> dict[str, Any]:
     items = ap.items
     out = {"id": ap.id, "execution_id": ap.execution_id, "agent_id": ap.agent_id, "agent_name": agent_name,
            "action": ap.action, "title": ap.title, "reason": ap.reason, "status": ap.status,
            "decided_by": decided_by_name, "decided_at": iso(ap.decided_at), "created_at": iso(ap.created_at),
+           "assigned_to": assignee, "can_decide": can_decide, "blocked_reason": blocked_reason,
            "counts": {"total": len(items), "approved": sum(1 for i in items if i.status == "approved"),
                       "rejected": sum(1 for i in items if i.status == "rejected"),
                       "pending": sum(1 for i in items if i.status == "pending"),

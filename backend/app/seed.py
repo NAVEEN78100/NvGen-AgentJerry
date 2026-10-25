@@ -155,6 +155,8 @@ def _seed_history(user_id: str) -> None:
             user = db.get(User, user_id)
             a = service.start(db, user, "Every weekday at 10am, check the invoices sheet for overdue invoices and send a "
                                         "polite payment reminder to each client after I approve.")
+            priya = db.scalars(select(User).where(User.email == DEMO_EMAIL)).first()
+            a.approver_id = priya.id if priya else None  # Arun builds it, his manager Priya approves
             agent_id = a.id
         with session_scope() as db:
             a = db.get(Agent, agent_id)

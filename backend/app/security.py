@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .config import JWT_SECRET, JWT_TTL_HOURS
 from .db import get_db
-from .models import AuditEvent, Notification, User
+from .models import AuditEvent, Notification, User  # noqa: F401
 
 _ITER = 240_000
 _bearer = HTTPBearer(auto_error=False)

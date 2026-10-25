@@ -202,6 +202,7 @@ def agent_get(agent_id: str, user: User = Depends(current_user), db: Session = D
 
 class AgentPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    approver_id: str | None = None
 
 
 @router.patch("/agents/{agent_id}")
@@ -210,6 +211,17 @@ def agent_patch(agent_id: str, body: AgentPatch, user: User = Depends(current_us
     if body.name:
         a.name = body.name.strip()
         audit(db, user.org_id, user.name, "agent.renamed", "agent", a.id, f"Renamed to “{a.name}”")
+    if body.approver_id:
+        ap_user = db.get(User, body.approver_id)
+        if not ap_user or ap_user.org_id != user.org_id:
+            raise HTTPException(404, "That person isn’t in your workspace.")
+        a.approver_id = ap_user.id
+        for pend in db.scalars(select(Approval).where(Approval.agent_id == a.id, Approval.status == "pending")):
+            pend.assigned_to = ap_user.id
+            from ..security import notify as _notify
+            _notify(db, user.org_id, "approval", f"{len(pend.items)} drafts need your approval",
+                    f"{user.name} asked you to approve “{a.name}”.", f"/approvals/{pend.id}", user_id=ap_user.id)
+        audit(db, user.org_id, user.name, "agent.approver", "agent", a.id, f"{ap_user.name} now approves “{a.name}”")
     db.commit()
     return _full(db, a)
 
@@ -348,14 +360,24 @@ def run_cancel(run_id: str, user: User = Depends(current_user), db: Session = De
 
 # ------------------------------------------------------------------ approvals
 @router.get("/approvals")
-def approvals_list(status: str = "pending", user: User = Depends(current_user), db: Session = Depends(get_db)):
+def approvals_list(status: str = "pending", mine: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
     q = select(Approval).where(Approval.org_id == user.org_id)
     if status != "all":
         q = q.where(Approval.status == status)
     rows = db.scalars(q.order_by(Approval.created_at.desc()).limit(100)).all()
     names = {a.id: a.name for a in db.scalars(select(Agent).where(Agent.org_id == user.org_id))}
-    users = {u.id: u.name for u in db.scalars(select(User).where(User.org_id == user.org_id))}
-    return [S.approval_out(r, names.get(r.agent_id), with_items=False, decided_by_name=users.get(r.decided_by)) for r in rows]
+    users = {u.id: u for u in db.scalars(select(User).where(User.org_id == user.org_id))}
+    out = []
+    for r in rows:
+        reason = executor.approval_permission(db, r, user) if r.status == "pending" else None
+        a_u = users.get(r.assigned_to)
+        out.append(S.approval_out(r, names.get(r.agent_id), with_items=False,
+                                  decided_by_name=users[r.decided_by].name if r.decided_by in users else None,
+                                  assignee={"id": a_u.id, "name": a_u.name} if a_u else None,
+                                  can_decide=reason is None, blocked_reason=reason))
+    if mine:
+        out = [o for o in out if o["can_decide"]]
+    return out
 
 
 @router.get("/approvals/{approval_id}")
@@ -365,7 +387,11 @@ def approval_get(approval_id: str, user: User = Depends(current_user), db: Sessi
         raise HTTPException(404, "Approval not found.")
     a = db.get(Agent, ap.agent_id)
     u = db.get(User, ap.decided_by) if ap.decided_by else None
-    return S.approval_out(ap, a.name if a else None, decided_by_name=u.name if u else None)
+    asg = db.get(User, ap.assigned_to) if ap.assigned_to else None
+    reason = executor.approval_permission(db, ap, user) if ap.status == "pending" else None
+    return S.approval_out(ap, a.name if a else None, decided_by_name=u.name if u else None,
+                          assignee={"id": asg.id, "name": asg.name} if asg else None,
+                          can_decide=reason is None, blocked_reason=reason)
 
 
 class Decision(BaseModel):
@@ -543,7 +569,9 @@ def activity(user: User = Depends(current_user), db: Session = Depends(get_db)):
 
 @router.get("/notifications")
 def notifications(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    rows = db.scalars(select(Notification).where(Notification.org_id == user.org_id).order_by(Notification.created_at.desc()).limit(30)).all()
+    rows = db.scalars(select(Notification).where(Notification.org_id == user.org_id,
+                                                (Notification.user_id.is_(None)) | (Notification.user_id == user.id))
+                      .order_by(Notification.created_at.desc()).limit(30)).all()
     return {"unread": sum(1 for n in rows if not n.read),
             "items": [{"id": n.id, "kind": n.kind, "title": n.title, "body": n.body, "link": n.link, "read": n.read,
                        "at": S.iso(n.created_at)} for n in rows]}
@@ -551,7 +579,8 @@ def notifications(user: User = Depends(current_user), db: Session = Depends(get_
 
 @router.post("/notifications/read")
 def notifications_read(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    for n in db.scalars(select(Notification).where(Notification.org_id == user.org_id, Notification.read.is_(False))):
+    for n in db.scalars(select(Notification).where(Notification.org_id == user.org_id, Notification.read.is_(False),
+                                                   (Notification.user_id.is_(None)) | (Notification.user_id == user.id))):
         n.read = True
     db.commit()
     return {"ok": True}
@@ -577,6 +606,7 @@ class PolicyIn(BaseModel):
     require_approval_external: bool | None = None
     require_approval_internal: bool | None = None
     max_emails_per_run: int | None = Field(default=None, ge=1, le=500)
+    four_eyes: bool | None = None
 
 
 class SmtpIn(BaseModel):

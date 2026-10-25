@@ -22,7 +22,7 @@ export function ApprovalReview() {
   const [submitting, setSubmitting] = useState(false)
   const [showRow, setShowRow] = useState(false)
   const items = ap.data?.items || []
-  const readOnly = ap.data?.status !== 'pending'
+  const readOnly = ap.data?.status !== 'pending' || ap.data?.can_decide === false
 
   useEffect(() => {
     if (!ap.data?.items) return
@@ -88,12 +88,15 @@ export function ApprovalReview() {
       <Link to="/approvals" className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink mb-3"><ArrowLeft className="h-4 w-4" />Approvals</Link>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[26px] font-semibold">{readOnly ? 'Decided' : 'Review before sending'}</h1>
+          <h1 className="text-[26px] font-semibold">{ap.data?.status !== 'pending' ? 'Decided' : 'Review before sending'}</h1>
           <p className="mt-1 text-ink-2 text-[14px]">{a.title}</p>
         </div>
         <div className="flex items-center gap-2 text-[13px] text-ink-2"><ShieldCheck className="h-4 w-4" style={{ color: HEX.approval }} />{a.reason}</div>
       </div>
-      {readOnly && <div className="mt-3 text-[13px] text-ink-2">Decided by <b className="text-ink">{a.decided_by || '—'}</b> on {dateTime(a.decided_at)}{a.status === 'expired' ? ' · this request expired because the run was cancelled' : ''}.</div>}
+      {ap.data?.status === 'pending' && ap.data.can_decide === false && (
+        <div className="mt-3 rounded-xl border border-f-trigger/40 bg-f-triggerbg/60 px-4 py-3 text-[13.5px]">{ap.data.blocked_reason} You can read the drafts, but only they can send them.</div>
+      )}
+      {ap.data?.status !== 'pending' && <div className="mt-3 text-[13px] text-ink-2">Decided by <b className="text-ink">{a.decided_by || '—'}</b> on {dateTime(a.decided_at)}{a.status === 'expired' ? ' · this request expired because the run was cancelled' : ''}.</div>}
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)] items-start">
         <div className="card overflow-hidden lg:sticky lg:top-20">

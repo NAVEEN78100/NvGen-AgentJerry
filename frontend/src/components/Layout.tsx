@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, LayoutGrid, LogOut, MailOpen, Menu, Play, Plus,
+  Activity, Bell, Bot, BookOpen, Check, Cpu, Database, Hourglass, Inbox, LayoutGrid, LogOut, MailOpen, Menu, Play, Plus, Users,
   Send, Settings, X, XCircle,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -58,6 +58,7 @@ function Sidebar({ pending, replies, onNavigate }: { pending: number; replies: n
         <NavItem to="/data" icon={<Database className={i} />} label="Data files" />
         <NavItem to="/knowledge" icon={<BookOpen className={i} />} label="Knowledge" />
         <NavItem to="/outbox" icon={<Send className={i} />} label="Outbox" />
+        <NavItem to="/team" icon={<Users className={i} />} label="Team" />
         <NavItem to="/activity" icon={<Activity className={i} />} label="Activity log" />
         <NavItem to="/settings" icon={<Settings className={i} />} label="Settings" />
       </nav>
@@ -146,7 +147,7 @@ export function Layout() {
   const [drawer, setDrawer] = useState(false)
   const loc = useLocation()
   const notes = useApi<Counts>('/notifications', { poll: 5000 })
-  const approvals = useApi<any[]>('/approvals?status=pending', { poll: 5000 })
+  const approvals = useApi<any[]>('/approvals?status=pending&mine=true', { poll: 5000 })
   const pending = approvals.data?.length || 0
   const replyCounts = useApi<{ open_counts: Record<string, number> }>('/replies?status=open', { poll: 8000 })
   const replies = Object.values(replyCounts.data?.open_counts || {}).reduce((a, b) => a + b, 0)
